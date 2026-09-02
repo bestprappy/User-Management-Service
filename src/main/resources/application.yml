@@ -1,6 +1,71 @@
 spring:
   application:
     name: user-management-service
+  config:
+    import: configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+
+  jpa:
+    # Flyway owns the schema. 'validate' makes Hibernate fail fast on drift
+    # instead of silently altering tables the way 'update' does.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    schemas: iam
+    default-schema: iam
+    locations: classpath:db/migration
+    # Refuse to run if the checksum of an applied migration changed — an edited
+    # migration is either a mistake or tampering, and both should stop a deploy.
+    validate-on-migrate: true
+    baseline-on-migrate: false
+
+navio:
+  security:
+    keycloak:
+      # Realm issuer. Tokens with any other 'iss' are rejected.
+      issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/navio}
+      # Accepted 'aud' values. Requires an Audience protocol mapper on the
+      # Keycloak client — without one Keycloak emits only "aud": "account" and
+      # every token here will be refused.
+      audiences: ${KEYCLOAK_AUDIENCES:navio-api}
+      clock-skew: 30s
+      admin:
+        base-url: ${KEYCLOAK_BASE_URL:http://localhost:8180}
+        realm: ${KEYCLOAK_REALM:navio}
+        client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:navio-user-management}
+        # No default on purpose: the service must not start with a blank or
+        # guessable secret. Startup fails if this is unset.
+        client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+        connect-timeout: 3s
+        read-timeout: 8s
+
+  outbox:
+    topic: user.events.v1
+    relay:
+      enabled: true
+      interval-ms: 2000
+
+server:
+  port: ${SERVER_PORT:8081}
+  # Honour X-Forwarded-* only through Spring's ForwardedHeaderFilter, so the
+  # client IP written to the audit log is the proxy-resolved value rather than a
+  # header any caller could forge.
+  forward-headers-strategy: framework
+  error:
+    # Never return exception text, stack traces, or binding detail to a client.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+    include-exception: false
+  # Bound request line and header size to blunt trivially large-header attacks.
+  max-http-request-header-size: 16KB
+  shutdown: graceful
 
 management:
   metrics:
@@ -10,14 +75,30 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,metrics,prometheus
+        # 'env', 'configprops', 'beans' and 'heapdump' stay closed: they would
+        # expose configuration values including the Keycloak client secret.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # Component detail can reveal internal hostnames and dependency topology.
+      show-details: never
+      show-components: never
+  info:
+    env:
+      enabled: false
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
     export:
       zipkin:
-        endpoint: http://localhost:9411/api/v2/spans
+        endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
   prometheus:
     metrics:
       export:
         enabled: true
+
+logging:
+  level:
+    # Raise to DEBUG only when diagnosing a token problem: it logs claim detail.
+    org.springframework.security: INFO
+    com.navio.usermanagementservice: INFO

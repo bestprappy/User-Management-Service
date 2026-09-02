@@ -19,6 +19,16 @@ import java.util.List;
  *
  * @param issuerUri        realm issuer, e.g. {@code https://sso.example/realms/navio}.
  *                         Tokens whose {@code iss} differs are rejected.
+ * @param jwkSetUri        optional explicit JWKS endpoint. When set, signing keys
+ *                         are fetched from here instead of via OIDC discovery on
+ *                         {@code issuerUri}. Set it when the public issuer is not
+ *                         reachable from this process at startup — for example
+ *                         when the issuer resolves through a reverse proxy that
+ *                         starts after this service, or presents a certificate
+ *                         this JVM does not trust. Only the key source changes:
+ *                         {@code iss} is still validated against
+ *                         {@code issuerUri}, so tokens from another issuer are
+ *                         still rejected.
  * @param audiences        accepted {@code aud} values. Spring Security does not
  *                         validate audience by default, so a token minted for a
  *                         different client in the same realm would otherwise be
@@ -32,6 +42,8 @@ public record KeycloakProperties(
 
         @NotBlank(message = "navio.security.keycloak.issuer-uri is required")
         String issuerUri,
+
+        String jwkSetUri,
 
         @NotEmpty(message = "navio.security.keycloak.audiences must list at least one accepted audience")
         List<@NotBlank String> audiences,

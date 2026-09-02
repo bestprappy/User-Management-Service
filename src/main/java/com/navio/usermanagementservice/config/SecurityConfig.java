@@ -139,11 +139,18 @@ public class SecurityConfig {
      *
      * <p>{@link JwtDecoders#fromIssuerLocation} performs OIDC discovery, so the
      * JWKS URI comes from the issuer's own metadata rather than being configured
-     * separately and drifting out of sync.
+     * separately and drifting out of sync. That discovery is a network call made
+     * while this bean is created, which is why {@code jwk-set-uri} exists as an
+     * override: in the deployed stack the public issuer resolves through NGINX,
+     * and NGINX cannot start until this service reports healthy.
+     *
+     * <p>Overriding the key source does not weaken validation. {@code iss} is
+     * still checked against the configured public issuer below, so a token minted
+     * by any other issuer is rejected regardless of where the keys came from.
      */
     @Bean
     public JwtDecoder jwtDecoder(KeycloakProperties properties) {
-        NimbusJwtDecoder decoder = (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(properties.issuerUri());
+        NimbusJwtDecoder decoder = buildDecoder(properties);
 
         // Validators are assembled explicitly rather than via
         // JwtValidators.createDefaultWithIssuer() so the configured clock skew is
@@ -154,6 +161,14 @@ public class SecurityConfig {
 
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(timestamps, issuer, audience));
         return decoder;
+    }
+
+    private static NimbusJwtDecoder buildDecoder(KeycloakProperties properties) {
+        String jwkSetUri = properties.jwkSetUri();
+        if (jwkSetUri != null && !jwkSetUri.isBlank()) {
+            return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+        }
+        return (NimbusJwtDecoder) JwtDecoders.fromIssuerLocation(properties.issuerUri());
     }
 
     /**

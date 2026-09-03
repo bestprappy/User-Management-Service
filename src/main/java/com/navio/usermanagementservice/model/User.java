@@ -62,7 +62,8 @@ public class User {
     @Column(length = 20)
     private String locale;
 
-    @Column(name = "country_code", length = 2)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "country_code", length = 2, columnDefinition = "char(2)")
     private String countryCode;
 
     @Builder.Default

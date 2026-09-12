@@ -3,9 +3,12 @@ package com.navio.usermanagementservice.controller;
 import com.navio.usermanagementservice.dto.VehicleRequests.CreateVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleRequests.UpdateVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleResponse;
+import com.navio.usermanagementservice.dto.VehicleCatalogResponse;
+import com.navio.usermanagementservice.dto.VehicleRequests.AddCatalogVehicleRequest;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import com.navio.usermanagementservice.security.CurrentUser;
 import com.navio.usermanagementservice.service.UserVehicleService;
+import com.navio.usermanagementservice.service.VehicleCatalogService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -36,6 +39,21 @@ import java.util.UUID;
 public class UserVehicleController {
 
     private final UserVehicleService userVehicleService;
+    private final VehicleCatalogService vehicleCatalogService;
+
+    @GetMapping("/catalog")
+    public ResponseEntity<List<VehicleCatalogResponse>> listCatalog(@CurrentUser AuthenticatedUser caller) {
+        return ResponseEntity.ok(vehicleCatalogService.listVehicles());
+    }
+
+    @PostMapping("/catalog/{catalogId}")
+    public ResponseEntity<VehicleResponse> addCatalogVehicle(
+            @CurrentUser AuthenticatedUser caller,
+            @PathVariable String catalogId,
+            @Valid @RequestBody AddCatalogVehicleRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(userVehicleService.addCatalogVehicle(caller, catalogId, request));
+    }
 
     @GetMapping
     public ResponseEntity<List<VehicleResponse>> listVehicles(@CurrentUser AuthenticatedUser caller) {

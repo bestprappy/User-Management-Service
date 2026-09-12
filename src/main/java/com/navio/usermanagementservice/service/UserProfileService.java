@@ -55,8 +55,19 @@ public class UserProfileService {
         return userMapper.toPublicProfile(user);
     }
 
+    public PublicUserProfileResponse getPublicProfileBySubject(UUID subject) {
+        var user = userRepository.findByAuthSubject(subject.toString())
+                .filter(profile -> profile.getDeletedAt() == null)
+                .orElseThrow(() -> new UserNotFoundException(subject));
+        return userMapper.toPublicProfile(user);
+    }
+
     @Transactional
     public UserProfileResponse updateMyProfile(AuthenticatedUser caller, UpdateProfileRequest request) {
+        if (request.avatarMediaId() != null) {
+            throw new com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException(
+                    "Upload your profile picture through the picture endpoint");
+        }
         User user = requireUser(caller.id());
 
         Map<String, Object> before = profileSnapshot(user);
@@ -64,10 +75,6 @@ public class UserProfileService {
 
         if (request.displayName() != null) {
             user.setDisplayName(request.displayName().trim());
-            changed = true;
-        }
-        if (request.avatarMediaId() != null) {
-            user.setAvatarMediaId(request.avatarMediaId());
             changed = true;
         }
         if (request.locale() != null) {

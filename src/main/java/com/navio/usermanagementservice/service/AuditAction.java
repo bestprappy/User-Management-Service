@@ -28,9 +28,14 @@ public final class AuditAction {
     public static final String USER_VEHICLE_UPDATED = "USER_VEHICLE_UPDATED";
     public static final String USER_VEHICLE_DELETED = "USER_VEHICLE_DELETED";
 
+    public static final String USER_SAVED_PLACE_CREATED = "USER_SAVED_PLACE_CREATED";
+    public static final String USER_SAVED_PLACE_UPDATED = "USER_SAVED_PLACE_UPDATED";
+    public static final String USER_SAVED_PLACE_DELETED = "USER_SAVED_PLACE_DELETED";
+
     /** A request was rejected because the account is suspended. */
     public static final String SUSPENDED_ACCESS_ATTEMPT = "SUSPENDED_ACCESS_ATTEMPT";
 
     public static final String RESOURCE_USER = "USER";
     public static final String RESOURCE_VEHICLE = "USER_VEHICLE";
+    public static final String RESOURCE_SAVED_PLACE = "USER_SAVED_PLACE";
 }

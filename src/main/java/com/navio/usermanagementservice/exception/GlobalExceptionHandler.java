@@ -5,6 +5,7 @@ import com.navio.usermanagementservice.exception.UserManagementExceptions.Busine
 import com.navio.usermanagementservice.exception.UserManagementExceptions.ForbiddenOperationException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.ModerationConflictException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.UserNotFoundException;
+import com.navio.usermanagementservice.exception.UserManagementExceptions.SavedPlaceNotFoundException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.VehicleNotFoundException;
 import com.navio.usermanagementservice.integration.keycloak.KeycloakAdminException;
 import jakarta.validation.ConstraintViolationException;
@@ -40,6 +41,21 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.navio.usermanagementservice.media.PictureException.class)
+    public ResponseEntity<ErrorResponse> handlePicture(com.navio.usermanagementservice.media.PictureException ex) {
+        return build(ex.getStatus(), ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handlePictureTooLarge(Exception ex) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "Picture must be at most 5 MiB", null);
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPicture(Exception ex) {
+        return build(HttpStatus.BAD_REQUEST, "A picture file is required", null);
+    }
+
     // --- Not found -----------------------------------------------------------
 
     @ExceptionHandler(UserNotFoundException.class)
@@ -54,6 +70,15 @@ public class GlobalExceptionHandler {
         // Identical response whether the vehicle is missing or owned by another
         // user, so vehicle ids cannot be enumerated.
         return build(HttpStatus.NOT_FOUND, "Vehicle not found", null);
+    }
+
+    @ExceptionHandler(SavedPlaceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleSavedPlaceNotFound(SavedPlaceNotFoundException ex) {
+        log.debug("Saved place not found: {}", ex.getMessage());
+        // Identical response whether the place is missing or owned by another
+        // user. These rows can hold a home address, so leaking existence would
+        // be worse here than for a vehicle.
+        return build(HttpStatus.NOT_FOUND, "Saved place not found", null);
     }
 
     // --- Authorization -------------------------------------------------------

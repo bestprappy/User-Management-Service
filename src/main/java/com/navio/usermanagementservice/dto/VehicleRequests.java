@@ -1,8 +1,10 @@
 package com.navio.usermanagementservice.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -49,25 +51,35 @@ public final class VehicleRequests {
             Short year,
 
             @NotNull(message = "batteryCapacityKwh is required")
+            @Digits(integer = 6, fraction = 2)
             @DecimalMin(value = "0.1", message = "batteryCapacityKwh must be greater than 0")
             @DecimalMax(value = "999999.99", message = "batteryCapacityKwh is out of range")
             BigDecimal batteryCapacityKwh,
 
             @NotNull(message = "rangeKm is required")
+            @Digits(integer = 6, fraction = 2)
             @DecimalMin(value = "0.1", message = "rangeKm must be greater than 0")
             @DecimalMax(value = "999999.99", message = "rangeKm is out of range")
             BigDecimal rangeKm,
 
             @DecimalMin(value = "0.0", inclusive = false, message = "consumptionKwhPer100km must be greater than 0")
+            @Digits(integer = 5, fraction = 3)
             @DecimalMax(value = "99999.999", message = "consumptionKwhPer100km is out of range")
             BigDecimal consumptionKwhPer100km,
 
             @NotNull(message = "connectorTypes is required")
-            @Size(max = 20, message = "at most 20 connector types may be listed")
+            @Size(min = 1, max = 20, message = "choose between 1 and 20 connector types")
             List<String> connectorTypes,
 
-            Boolean isDefault
+            Boolean isDefault,
+            @Valid VehicleSettings settings
     ) {
+        public CreateVehicleRequest(String nickname, String make, String model, Short year,
+                                    BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
+                                    BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm,
+                    consumptionKwhPer100km, connectorTypes, isDefault, null);
+        }
     }
 
     /** Every field is optional; null means "leave unchanged". */
@@ -89,20 +101,39 @@ public final class VehicleRequests {
 
             @DecimalMin(value = "0.1", message = "batteryCapacityKwh must be greater than 0")
             @DecimalMax(value = "999999.99")
+            @Digits(integer = 6, fraction = 2)
             BigDecimal batteryCapacityKwh,
 
             @DecimalMin(value = "0.1", message = "rangeKm must be greater than 0")
             @DecimalMax(value = "999999.99")
+            @Digits(integer = 6, fraction = 2)
             BigDecimal rangeKm,
 
             @DecimalMin(value = "0.0", inclusive = false)
             @DecimalMax(value = "99999.999")
+            @Digits(integer = 5, fraction = 3)
             BigDecimal consumptionKwhPer100km,
 
-            @Size(max = 20, message = "at most 20 connector types may be listed")
+            @Size(min = 1, max = 20, message = "choose between 1 and 20 connector types")
             List<String> connectorTypes,
 
-            Boolean isDefault
+            Boolean isDefault,
+            @Valid VehicleSettings settings
+    ) {
+        public UpdateVehicleRequest(String nickname, String make, String model, Short year,
+                                    BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
+                                    BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm,
+                    consumptionKwhPer100km, connectorTypes, isDefault, null);
+        }
+    }
+
+    public record AddCatalogVehicleRequest(
+            @Size(max = 100) String nickname,
+            @NotNull @DecimalMin(value = "0", inclusive = false) @DecimalMax("99999.999")
+            @Digits(integer = 5, fraction = 3)
+            BigDecimal consumptionKwhPer100km,
+            @Min(0) @Max(100) Integer startingBatteryPct
     ) {
     }
 }

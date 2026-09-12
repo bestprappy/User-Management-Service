@@ -67,6 +67,19 @@ public class UserVehicle {
     @Column(name = "consumption_kwh_per_100km", precision = 8, scale = 3)
     private BigDecimal consumptionKwhPer100km;
 
+    @Column(name = "max_ac_kw", precision = 7, scale = 2)
+    private BigDecimal maxAcKw;
+
+    @Column(name = "max_dc_kw", precision = 7, scale = 2)
+    private BigDecimal maxDcKw;
+
+    @Builder.Default
+    @Column(name = "starting_battery_pct", nullable = false)
+    private Integer startingBatteryPct = 80;
+
+    @Column(name = "image_url", length = 2048)
+    private String imageUrl;
+
     @Builder.Default
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "connector_types", nullable = false)

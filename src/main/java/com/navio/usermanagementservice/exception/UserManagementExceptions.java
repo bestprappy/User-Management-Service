@@ -38,6 +38,19 @@ public final class UserManagementExceptions {
         }
     }
 
+    /**
+     * A saved place does not exist <em>for this owner</em>.
+     *
+     * <p>Thrown for both "no such place" and "belongs to somebody else". These
+     * rows can hold a home address, so the two cases are deliberately
+     * indistinguishable to the caller.
+     */
+    public static class SavedPlaceNotFoundException extends RuntimeException {
+        public SavedPlaceNotFoundException(UUID placeId) {
+            super("No saved place with id " + placeId + " for this user");
+        }
+    }
+
     /** The caller's account is currently suspended. */
     public static class AccountSuspendedException extends RuntimeException {
         public AccountSuspendedException(String reason) {

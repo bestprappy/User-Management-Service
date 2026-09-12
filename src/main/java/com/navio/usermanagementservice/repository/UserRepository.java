@@ -13,6 +13,22 @@ import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
+    @Query(value = "SELECT id FROM iam.users WHERE id = :userId FOR UPDATE", nativeQuery = true)
+    UUID lockPicture(@Param("userId") UUID userId);
+
+    /** Serializes garage writes, including the first insert when no vehicle row exists yet. */
+    @Query(value = "SELECT id FROM iam.users WHERE id = :userId FOR UPDATE", nativeQuery = true)
+    UUID lockGarage(@Param("userId") UUID userId);
+
+    /**
+     * Serializes saved-place writes, including the first insert.
+     *
+     * <p>Takes the same user row lock as {@link #lockGarage}; kept as a separate
+     * method so each call site reads as what it is actually protecting.
+     */
+    @Query(value = "SELECT id FROM iam.users WHERE id = :userId FOR UPDATE", nativeQuery = true)
+    UUID lockSavedPlaces(@Param("userId") UUID userId);
+
     /** Primary lookup for an authenticated request: Keycloak {@code sub} to profile. */
     Optional<User> findByAuthSubject(String authSubject);
 

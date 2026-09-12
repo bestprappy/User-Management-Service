@@ -6,6 +6,7 @@ import com.navio.usermanagementservice.exception.UserManagementExceptions.Busine
 import com.navio.usermanagementservice.exception.UserManagementExceptions.VehicleNotFoundException;
 import com.navio.usermanagementservice.model.UserVehicle;
 import com.navio.usermanagementservice.repository.UserVehicleRepository;
+import com.navio.usermanagementservice.repository.UserRepository;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import com.navio.usermanagementservice.security.NavioRole;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,11 +50,17 @@ class UserVehicleServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private VehicleCatalogService catalogService;
+
     private UserVehicleService service;
 
     @BeforeEach
     void setUp() {
-        service = new UserVehicleService(vehicleRepository, new UserMapper(new ObjectMapper()), auditService);
+        service = new UserVehicleService(vehicleRepository, new UserMapper(new ObjectMapper().findAndRegisterModules()), auditService, userRepository, catalogService);
     }
 
     @Test
@@ -112,7 +119,7 @@ class UserVehicleServiceTest {
         service.deleteVehicle(caller(OWNER_ID), VEHICLE_ID);
 
         ArgumentCaptor<UserVehicle> saved = ArgumentCaptor.forClass(UserVehicle.class);
-        verify(vehicleRepository).save(saved.capture());
+        verify(vehicleRepository).saveAndFlush(saved.capture());
 
         assertThat(saved.getValue().getDeletedAt()).isNotNull();
         // Leaving is_default set would keep the partial unique index occupied by

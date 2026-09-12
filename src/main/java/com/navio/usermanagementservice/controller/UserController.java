@@ -67,4 +67,10 @@ public class UserController {
             @PathVariable UUID userId) {
         return ResponseEntity.ok(userProfileService.getPublicProfile(userId));
     }
+
+    @GetMapping("/by-subject/{subject}")
+    public ResponseEntity<PublicUserProfileResponse> getPublicProfileBySubject(
+            @CurrentUser AuthenticatedUser caller, @PathVariable UUID subject) {
+        return ResponseEntity.ok(userProfileService.getPublicProfileBySubject(subject));
+    }
 }

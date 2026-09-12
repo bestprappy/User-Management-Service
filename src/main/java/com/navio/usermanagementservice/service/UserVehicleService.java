@@ -3,6 +3,9 @@ package com.navio.usermanagementservice.service;
 import com.navio.usermanagementservice.dto.VehicleRequests.CreateVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleRequests.UpdateVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleResponse;
+import com.navio.usermanagementservice.dto.VehicleRequests.AddCatalogVehicleRequest;
+import com.navio.usermanagementservice.dto.VehicleSettings;
+import com.navio.usermanagementservice.repository.UserRepository;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.VehicleNotFoundException;
 import com.navio.usermanagementservice.model.UserVehicle;
@@ -13,13 +16,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
+import java.util.Set;
 
 /**
  * The user's saved-vehicle garage.
@@ -44,11 +48,13 @@ public class UserVehicleService {
     private static final long MAX_VEHICLES_PER_USER = 25;
 
     /** Connector identifiers are restricted to a safe character set. */
-    private static final Pattern CONNECTOR_PATTERN = Pattern.compile("^[A-Z0-9_-]{1,40}$");
+    private static final Set<String> CONNECTOR_TYPES = Set.of("CCS1", "CCS2", "TYPE2", "J1772", "CHADEMO", "NACS", "GB_T");
 
     private final UserVehicleRepository vehicleRepository;
     private final UserMapper userMapper;
     private final AuditService auditService;
+    private final UserRepository userRepository;
+    private final VehicleCatalogService catalogService;
 
     public List<VehicleResponse> listMyVehicles(AuthenticatedUser caller) {
         return vehicleRepository
@@ -64,6 +70,7 @@ public class UserVehicleService {
 
     @Transactional
     public VehicleResponse addVehicle(AuthenticatedUser caller, CreateVehicleRequest request) {
+        userRepository.lockGarage(caller.id());
         long existing = vehicleRepository.countByUserIdAndDeletedAtIsNull(caller.id());
         if (existing >= MAX_VEHICLES_PER_USER) {
             throw new BusinessRuleException(
@@ -86,6 +93,8 @@ public class UserVehicleService {
                 .metadata(new HashMap<>())
                 .build();
 
+        applySettings(vehicle, request.settings());
+
         if (makeDefault) {
             // Clear any prior default first so the partial unique index
             // uq_iam_user_vehicles_user_default is never violated.
@@ -100,9 +109,48 @@ public class UserVehicleService {
     }
 
     @Transactional
+    public VehicleResponse addCatalogVehicle(AuthenticatedUser caller, String catalogId,
+                                             AddCatalogVehicleRequest request) {
+        userRepository.lockGarage(caller.id());
+        var catalog = catalogService.requireVehicle(catalogId);
+        var existing = vehicleRepository.findByUserIdAndDeletedAtIsNullOrderByIsDefaultDescCreatedAtAsc(caller.id())
+                .stream().filter(vehicle -> {
+                    Object snapshot = vehicle.getMetadata().get("catalog");
+                    return snapshot instanceof Map<?, ?> fields && catalogId.equals(fields.get("id"));
+                }).findFirst();
+        if (existing.isPresent()) {
+            return updateVehicle(caller, existing.get().getId(), new UpdateVehicleRequest(
+                    request.nickname(), null, null, null, null, null, request.consumptionKwhPer100km(),
+                    null, true, new VehicleSettings(null, null, request.startingBatteryPct(), null)));
+        }
+        // Specifications are always resolved on the server, never copied from browser input.
+        var response = addVehicle(caller, new CreateVehicleRequest(request.nickname(), catalog.make(),
+                catalog.model(), catalog.year(), catalog.batteryCapacityKwh(), catalog.rangeKm(),
+                request.consumptionKwhPer100km(), catalog.connectorTypes(), true,
+                new VehicleSettings(catalog.maxAcKw(), catalog.maxDcKw(), request.startingBatteryPct(), catalog.imageUrl())));
+        var vehicle = requireOwnedVehicle(caller, response.id());
+        vehicle.getMetadata().put("catalog", userMapper.toCatalogMetadata(catalog));
+        return userMapper.toVehicle(vehicleRepository.save(vehicle));
+    }
+
+    @Transactional
     public VehicleResponse updateVehicle(AuthenticatedUser caller, UUID vehicleId, UpdateVehicleRequest request) {
+        userRepository.lockGarage(caller.id());
         UserVehicle vehicle = requireOwnedVehicle(caller, vehicleId);
         Map<String, Object> before = vehicleSnapshot(vehicle);
+
+        if ((request.make() != null && request.make().isBlank()) ||
+                (request.model() != null && request.model().isBlank())) {
+            throw new BusinessRuleException("Make and model must not be blank");
+        }
+        boolean changesSpecifications = request.make() != null || request.model() != null || request.year() != null
+                || request.batteryCapacityKwh() != null || request.rangeKm() != null || request.connectorTypes() != null
+                || (request.settings() != null && (request.settings().maxAcKw() != null || request.settings().maxDcKw() != null));
+        if (changesSpecifications) {
+            // An edited specification becomes a custom vehicle; retain no claim of official verification.
+            vehicle.getMetadata().remove("catalog");
+        }
+        applySettings(vehicle, request.settings());
 
         if (request.nickname() != null) {
             vehicle.setNickname(trimToNull(request.nickname()));
@@ -152,13 +200,22 @@ public class UserVehicleService {
      */
     @Transactional
     public void deleteVehicle(AuthenticatedUser caller, UUID vehicleId) {
+        userRepository.lockGarage(caller.id());
         UserVehicle vehicle = requireOwnedVehicle(caller, vehicleId);
-
+        boolean wasDefault = vehicle.isDefault();
         vehicle.setDeletedAt(Instant.now());
         // Release the default slot, otherwise the partial unique index would
         // keep a deleted row occupying it.
         vehicle.setDefault(false);
-        vehicleRepository.save(vehicle);
+        vehicleRepository.saveAndFlush(vehicle);
+
+        if (wasDefault) {
+            vehicleRepository.findByUserIdAndDeletedAtIsNullOrderByIsDefaultDescCreatedAtAsc(caller.id())
+                    .stream().findFirst().ifPresent(next -> {
+                        next.setDefault(true);
+                        vehicleRepository.save(next);
+                    });
+        }
 
         auditService.record(caller.id(), AuditAction.USER_VEHICLE_DELETED,
                 AuditAction.RESOURCE_VEHICLE, vehicle.getId(), Map.of());
@@ -193,13 +250,38 @@ public class UserVehicleService {
                 .distinct()
                 .toList();
 
+        if (normalized.isEmpty()) {
+            throw new BusinessRuleException("Choose at least one connector type");
+        }
+
         for (String connector : normalized) {
-            if (!CONNECTOR_PATTERN.matcher(connector).matches()) {
+            if (!CONNECTOR_TYPES.contains(connector)) {
                 throw new BusinessRuleException(
-                        "Connector types may contain only letters, digits, hyphen and underscore");
+                        "Choose a supported EV connector type");
             }
         }
         return normalized;
+    }
+
+    private void applySettings(UserVehicle vehicle, VehicleSettings settings) {
+        if (settings == null) return;
+        if (settings.maxAcKw() != null) vehicle.setMaxAcKw(settings.maxAcKw());
+        if (settings.maxDcKw() != null) vehicle.setMaxDcKw(settings.maxDcKw());
+        if (settings.startingBatteryPct() != null) vehicle.setStartingBatteryPct(settings.startingBatteryPct());
+        if (settings.imageUrl() != null) {
+            String imageUrl = trimToNull(settings.imageUrl());
+            if (imageUrl != null && !imageUrl.matches("^/images/vehicles/[a-z0-9-]+\\.(png|webp)$")) {
+                try {
+                    URI uri = URI.create(imageUrl);
+                    if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) {
+                        throw new IllegalArgumentException("Invalid image URL");
+                    }
+                } catch (IllegalArgumentException exception) {
+                    throw new BusinessRuleException("Use a valid HTTPS image URL");
+                }
+            }
+            vehicle.setImageUrl(imageUrl);
+        }
     }
 
     private String trimToNull(String value) {
@@ -219,6 +301,9 @@ public class UserVehicleService {
         snapshot.put("batteryCapacityKwh", vehicle.getBatteryCapacityKwh());
         snapshot.put("rangeKm", vehicle.getRangeKm());
         snapshot.put("isDefault", vehicle.isDefault());
+        snapshot.put("startingBatteryPct", vehicle.getStartingBatteryPct());
+        snapshot.put("maxAcKw", vehicle.getMaxAcKw());
+        snapshot.put("maxDcKw", vehicle.getMaxDcKw());
         return snapshot;
     }
 }

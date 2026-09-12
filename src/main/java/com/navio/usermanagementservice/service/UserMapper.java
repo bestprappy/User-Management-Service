@@ -6,6 +6,8 @@ import com.navio.usermanagementservice.dto.PublicUserProfileResponse;
 import com.navio.usermanagementservice.dto.UserPreferences;
 import com.navio.usermanagementservice.dto.UserProfileResponse;
 import com.navio.usermanagementservice.dto.VehicleResponse;
+import com.navio.usermanagementservice.dto.VehicleCatalogResponse;
+import com.navio.usermanagementservice.dto.VehicleSettings;
 import com.navio.usermanagementservice.model.User;
 import com.navio.usermanagementservice.model.UserVehicle;
 import com.navio.usermanagementservice.security.NavioRole;
@@ -72,8 +74,20 @@ public class UserMapper {
                 List.copyOf(vehicle.getConnectorTypes()),
                 vehicle.isDefault(),
                 vehicle.getCreatedAt(),
-                vehicle.getUpdatedAt()
+                vehicle.getUpdatedAt(),
+                new VehicleSettings(vehicle.getMaxAcKw(), vehicle.getMaxDcKw(),
+                        vehicle.getStartingBatteryPct(), vehicle.getImageUrl()),
+                toVehicleCatalog(vehicle)
         );
+    }
+
+    private VehicleCatalogResponse toVehicleCatalog(UserVehicle vehicle) {
+        Object catalog = vehicle.getMetadata().get("catalog");
+        return catalog == null ? null : objectMapper.convertValue(catalog, VehicleCatalogResponse.class);
+    }
+
+    public Map<String, Object> toCatalogMetadata(VehicleCatalogResponse catalog) {
+        return objectMapper.convertValue(catalog, new TypeReference<>() {});
     }
 
     /**

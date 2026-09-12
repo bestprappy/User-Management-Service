@@ -24,6 +24,8 @@ public record VehicleResponse(
         List<String> connectorTypes,
         boolean isDefault,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        VehicleSettings settings,
+        VehicleCatalogResponse catalog
 ) {
 }

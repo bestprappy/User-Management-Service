@@ -1,0 +1,26 @@
+[
+  {
+    "id": "th-byd-atto-3-extended-2026", "make": "BYD", "model": "ATTO 3", "trim": "Extended", "year": 2026,
+    "market": "TH", "batteryCapacityKwh": 60.48, "batteryCapacityBasis": "MANUFACTURER_DECLARED",
+    "rangeKm": 480, "rangeStandard": "NEDC", "connectorTypes": ["TYPE2", "CCS2"],
+    "maxAcKw": 7, "maxDcKw": 88, "imageUrl": "/images/vehicles/byd-atto-3.png",
+    "sourceUrl": "https://www.reverautomotive.com/media/models/new-atto3/brochure/bydatto3_MY2026.pdf",
+    "verifiedAt": "2026-09-12"
+  },
+  {
+    "id": "th-byd-dolphin-extended-60-48", "make": "BYD", "model": "DOLPHIN", "trim": "Extended Range", "year": null,
+    "market": "TH", "batteryCapacityKwh": 60.48, "batteryCapacityBasis": "MANUFACTURER_DECLARED",
+    "rangeKm": 490, "rangeStandard": "NEDC", "connectorTypes": ["TYPE2", "CCS2"],
+    "maxAcKw": 7, "maxDcKw": 80, "imageUrl": "/images/vehicles/byd-dolphin.png",
+    "sourceUrl": "https://www.reverautomotive.com/model/new-dolphin/overview",
+    "verifiedAt": "2026-09-12"
+  },
+  {
+    "id": "th-byd-seal-premium-82-56", "make": "BYD", "model": "SEAL", "trim": "Premium RWD", "year": null,
+    "market": "TH", "batteryCapacityKwh": 82.56, "batteryCapacityBasis": "MANUFACTURER_DECLARED",
+    "rangeKm": 650, "rangeStandard": "NEDC", "connectorTypes": ["TYPE2", "CCS2"],
+    "maxAcKw": null, "maxDcKw": 150, "imageUrl": "/images/vehicles/byd-seal.png",
+    "sourceUrl": "https://www.reverautomotive.com/model/seal/overview",
+    "verifiedAt": "2026-09-12"
+  }
+]

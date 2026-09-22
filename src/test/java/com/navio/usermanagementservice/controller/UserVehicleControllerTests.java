@@ -53,8 +53,23 @@ class UserVehicleControllerTests {
         lenient().when(provisioning.resolve(any(), anySet())).thenReturn(caller);
     }
 
+    @Test void observedProvenanceIsAcceptedButAuthoritativeClaimsAreRejected() throws Exception {
+        mvc.perform(patch(BASE + "/" + ID).with(jwt()).contentType(MediaType.APPLICATION_JSON).content("""
+                {"consumptionKwhPer100km":18.125,"consumptionProvenance":{"consumptionSource":"USER_OBSERVED","consumptionMeasurementBasis":"UNKNOWN"}}
+                """)).andExpect(status().isOk());
+        verify(vehicles).updateVehicle(eq(caller), eq(ID), argThat(request ->
+                request.consumptionProvenance() != null
+                && request.consumptionProvenance().consumptionSource().name().equals("USER_OBSERVED")));
+        for (String source : java.util.List.of("MANUFACTURER_REPORTED", "REGULATORY_REPORTED")) {
+            mvc.perform(patch(BASE + "/" + ID).with(jwt()).contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"consumptionKwhPer100km\":18,\"consumptionProvenance\":{\"consumptionSource\":\"" + source + "\"}}"))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
     @Test void anonymousRequestsCannotReadOrMutateTheGarage() throws Exception {
-        for (var request : java.util.List.of(get(BASE), get(BASE + "/catalog"), post(BASE),
+        for (var request : java.util.List.of(get(BASE), get(BASE + "/" + ID), get("/v1/users/" + OWNER + "/vehicles"), get("/v1/users/me"), post(BASE),
+                post(BASE + "/catalog"), patch(BASE + "/catalog"), delete(BASE + "/catalog"),
                 post(BASE + "/catalog/example"), patch(BASE + "/" + ID), delete(BASE + "/" + ID))) {
             mvc.perform(request.contentType(MediaType.APPLICATION_JSON).content("{}"))
                     .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.status").value(401));
@@ -71,6 +86,17 @@ class UserVehicleControllerTests {
                 .andExpect(jsonPath("$[0].verifiedAt").value("2026-09-12"));
         verify(catalog).listVehicles();
         verifyNoInteractions(vehicles);
+    }
+
+    @Test void anonymousCatalogueReadReturnsOnlyPublicSpecifications() throws Exception {
+        var realCatalog = new VehicleCatalogService(new JacksonConfiguration().objectMapper());
+        when(catalog.listVehicles()).thenReturn(realCatalog.listVehicles());
+        mvc.perform(get(BASE + "/catalog"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value("th-byd-atto-3-extended-2026"))
+                .andExpect(jsonPath("$[0].energyProfile.ratedRangeStandard").value("NEDC"))
+                .andExpect(jsonPath("$[0].userId").doesNotExist())
+                .andExpect(jsonPath("$[0].nickname").doesNotExist());
+        verifyNoInteractions(vehicles, provisioning);
     }
 
     @Test void invalidStartingBatteryIsRejectedBeforeMutation() throws Exception {
@@ -111,10 +137,26 @@ class UserVehicleControllerTests {
         verifyNoInteractions(vehicles);
     }
 
-    @Test void catalogueSelectionRequiresDriverConsumption() throws Exception {
+    @Test void catalogueSelectionRequiresConsumptionOrExplicitDefault() throws Exception {
         mvc.perform(post(BASE + "/catalog/th-byd-atto-3-extended-2026").with(jwt())
                         .contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.validationErrors.consumptionKwhPer100km").exists());
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.validationErrors.consumptionSelectionValid").exists());
+        verifyNoInteractions(vehicles);
+    }
+
+    @Test void explicitCatalogueDefaultDoesNotRequireConsumption() throws Exception {
+        mvc.perform(post(BASE + "/catalog/th-byd-atto-3-extended-2026").with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"energySelection\":\"USE_DEFAULT\"}"))
+                .andExpect(status().isCreated());
+        verify(vehicles).addCatalogVehicle(eq(caller), eq("th-byd-atto-3-extended-2026"),
+                argThat(request -> request.consumptionKwhPer100km() == null
+                        && request.energySelection() == com.navio.usermanagementservice.dto.VehicleRequests.EnergySelection.USE_DEFAULT));
+    }
+
+    @Test void unknownEnergySelectionIsRejectedBeforeMutation() throws Exception {
+        mvc.perform(patch(BASE + "/" + ID).with(jwt()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"energySelection\":\"TRUST_EVERYTHING\"}"))
+                .andExpect(status().isBadRequest());
         verifyNoInteractions(vehicles);
     }
 

@@ -34,6 +34,47 @@ class PostgresSchemaTests {
     @Autowired
     Flyway flyway;
 
+    @Autowired jakarta.persistence.EntityManager entityManager;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    @Test
+    void vehicleEnergyProvenanceSurvivesJsonbPersistence() {
+        var owner = java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",
+                owner, owner.toString(), owner + "@example.com", "Energy profile test");
+        var json = new com.navio.usermanagementservice.config.JacksonConfiguration().objectMapper();
+        var mapper = new com.navio.usermanagementservice.service.UserMapper(json);
+        var vehicle = com.navio.usermanagementservice.model.UserVehicle.builder()
+                .userId(owner).make("Test").model("EV")
+                .batteryCapacityKwh(new java.math.BigDecimal("60.48"))
+                .rangeKm(new java.math.BigDecimal("480"))
+                .consumptionKwhPer100km(new java.math.BigDecimal("18.125"))
+                .connectorTypes(java.util.List.of("CCS2")).build();
+        var profile = mapper.toEnergyProfile(vehicle).observed(
+                com.navio.usermanagementservice.dto.VehicleEnergyProfile.MeasurementBasis.UNKNOWN);
+        vehicle.getMetadata().put("energyProfile", mapper.toEnergyMetadata(profile));
+        vehicle.getMetadata().put("otherFeature", java.util.Map.of("enabled", true));
+        entityManager.persist(vehicle);
+        entityManager.flush();
+        var id = vehicle.getId();
+        entityManager.clear();
+        var reloaded = entityManager.find(com.navio.usermanagementservice.model.UserVehicle.class, id);
+        assertThat(mapper.toEnergyProfile(reloaded)).isEqualTo(profile);
+        assertThat(reloaded.getConsumptionKwhPer100km()).isEqualByComparingTo("18.125");
+        assertThat(reloaded.getMetadata()).containsKey("otherFeature");
+
+        // Phase 2 reset persists a null scalar together with an explicit range profile.
+        var fallback = com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(null, reloaded.getRangeKm());
+        reloaded.setConsumptionKwhPer100km(null);
+        reloaded.getMetadata().put("energyProfile", mapper.toEnergyMetadata(fallback));
+        entityManager.flush();
+        entityManager.clear();
+        var reset = entityManager.find(com.navio.usermanagementservice.model.UserVehicle.class, id);
+        assertThat(reset.getConsumptionKwhPer100km()).isNull();
+        assertThat(mapper.toEnergyProfile(reset)).isEqualTo(fallback);
+        assertThat(reset.getMetadata()).containsKey("otherFeature");
+    }
+
     @Test
     void migrationsApplyAndEntityMappingsMatchThePostgresSchema() {
         assertThat(flyway.info().pending()).isEmpty();

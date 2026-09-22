@@ -156,6 +156,171 @@ class VehicleGarageTests {
         return new UpdateVehicleRequest(null, null, null, null, null, null, null, null, isDefault, settings);
     }
 
+    @Test void legacyConsumptionIsPreservedWithoutWritingOrInferringProvenance() {
+        var saved = vehicle();
+        var value = new BigDecimal("17.537");
+        saved.setConsumptionKwhPer100km(value);
+        saved.getMetadata().put("catalog", mapper.toCatalogMetadata(catalog.requireVehicle(CATALOG_ID)));
+        var response = mapper.toVehicle(saved);
+        assertThat(response.consumptionKwhPer100km()).isSameAs(value);
+        assertThat(response.energyProfile().consumptionKwhPer100km()).isSameAs(value);
+        assertThat(response.energyProfile().selectionMode().name()).isEqualTo("LEGACY_UNCONFIRMED");
+        assertThat(response.energyProfile().consumptionSource().name()).isEqualTo("UNKNOWN");
+        assertThat(response.energyProfile().consumptionStandard().name()).isEqualTo("NONE");
+        assertThat(response.energyProfile().sourceUrl()).isNull();
+        assertThat(saved.getMetadata()).doesNotContainKey("energyProfile");
+    }
+
+    @Test void catalogueEvidenceDoesNotBecomeConsumptionEvidence() {
+        var car = catalog.requireVehicle(CATALOG_ID);
+        var profile = car.energyProfile();
+        assertThat(profile.ratedRangeKm()).isEqualByComparingTo(car.rangeKm());
+        assertThat(profile.ratedRangeStandard().name()).isEqualTo("NEDC");
+        assertThat(profile.consumptionStandard().name()).isEqualTo("NONE");
+        assertThat(profile.capacityBasis().name()).isEqualTo("MANUFACTURER_DECLARED_UNSPECIFIED");
+        assertThat(profile.usableBatteryCapacityKwh()).isNull();
+        assertThat(profile.consumptionKwhPer100km()).isNull();
+        assertThat(profile.sourceUrl()).isNull();
+        assertThat(car.sourceUrl()).isNotBlank();
+    }
+
+    @Test void observedConsumptionRoundTripsAndUnrelatedUpdatesPreserveIt() throws Exception {
+        var saved = vehicle();
+        saved.getMetadata().put("otherFeature", java.util.Map.of("enabled", true));
+        when(vehicles.findByIdAndUserIdAndDeletedAtIsNull(ID, OWNER)).thenReturn(Optional.of(saved));
+        when(vehicles.save(saved)).thenReturn(saved);
+        var json = new JacksonConfiguration().objectMapper();
+        var request = json.readValue("""
+                {"consumptionKwhPer100km":18.125,"consumptionProvenance":{"consumptionSource":"USER_OBSERVED"}}
+                """, UpdateVehicleRequest.class);
+        service.updateVehicle(caller, ID, request);
+        // Exercise the JSON representation used by the existing JSONB field.
+        saved.setMetadata(json.readValue(json.writeValueAsString(saved.getMetadata()),
+                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {}));
+        var response = service.updateVehicle(caller, ID, patch(null, new VehicleSettings(null, null, 40, null)));
+        assertThat(response.consumptionKwhPer100km()).isEqualByComparingTo("18.125");
+        assertThat(response.energyProfile().consumptionSource().name()).isEqualTo("USER_OBSERVED");
+        assertThat(response.energyProfile().consumptionMeasurementBasis().name()).isEqualTo("UNKNOWN");
+        assertThat(response.energyProfile().selectionMode().name()).isEqualTo("USER_OVERRIDE");
+        assertThat(saved.getMetadata()).containsKey("otherFeature");
+        var reloaded = json.readValue(json.writeValueAsString(response), com.navio.usermanagementservice.dto.VehicleResponse.class);
+        assertThat(reloaded.energyProfile()).isEqualTo(response.energyProfile());
+        // Old payloads still work, but cannot keep a stale source claim.
+        service.updateVehicle(caller, ID, json.readValue("{\"consumptionKwhPer100km\":19.25}", UpdateVehicleRequest.class));
+        assertThat(mapper.toVehicle(saved).energyProfile().consumptionSource().name()).isEqualTo("UNKNOWN");
+        assertThat(saved.getConsumptionKwhPer100km()).isEqualByComparingTo("19.25");
+        assertThat(saved.getMetadata()).containsKey("otherFeature");
+    }
+
+    @Test void clientCannotClaimAuthoritativeProvenance() {
+        var json = new JacksonConfiguration().objectMapper();
+        assertThatThrownBy(() -> json.readValue("""
+                {"consumptionKwhPer100km":18,"consumptionProvenance":{"consumptionSource":"MANUFACTURER_REPORTED"}}
+                """, UpdateVehicleRequest.class)).isInstanceOf(com.fasterxml.jackson.core.JsonProcessingException.class);
+    }
+
+    @Test void provenanceWithoutConsumptionIsRejected() throws Exception {
+        var saved = vehicle();
+        when(vehicles.findByIdAndUserIdAndDeletedAtIsNull(ID, OWNER)).thenReturn(Optional.of(saved));
+        var request = new JacksonConfiguration().objectMapper().readValue("""
+                {"consumptionProvenance":{"consumptionSource":"USER_OBSERVED"}}
+                """, UpdateVehicleRequest.class);
+        assertThatThrownBy(() -> service.updateVehicle(caller, ID, request)).isInstanceOf(BusinessRuleException.class);
+        verify(vehicles, never()).save(any());
+    }
+
+    @Test void explicitDefaultAndResetKeepRangeWithoutInventingConsumption() throws Exception {
+        var saved = vehicle();
+        saved.setConsumptionKwhPer100km(new BigDecimal("17.537"));
+        saved.getMetadata().put("catalog", mapper.toCatalogMetadata(catalog.requireVehicle(CATALOG_ID)));
+        saved.getMetadata().put("otherFeature", "preserved");
+        when(vehicles.findByIdAndUserIdAndDeletedAtIsNull(ID, OWNER)).thenReturn(Optional.of(saved));
+        when(vehicles.save(saved)).thenReturn(saved);
+        var json = new JacksonConfiguration().objectMapper();
+        var reset = json.readValue("{\"energySelection\":\"RESET_DEFAULT\"}", UpdateVehicleRequest.class);
+        var response = service.updateVehicle(caller, ID, reset);
+        assertThat(response.consumptionKwhPer100km()).isNull();
+        assertThat(response.energyProfile().modelKind().name()).isEqualTo("RATED_RANGE");
+        assertThat(response.energyProfile().selectionMode().name()).isEqualTo("CATALOG_DEFAULT");
+        assertThat(response.energyProfile().ratedRangeStandard().name()).isEqualTo("NEDC");
+        assertThat(response.energyProfile().consumptionStandard().name()).isEqualTo("NONE");
+        assertThat(response.energyProfile().usableBatteryCapacityKwh()).isNull();
+        saved.setMetadata(json.readValue(json.writeValueAsString(saved.getMetadata()),
+                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {}));
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+        assertThat(saved.getMetadata()).containsEntry("otherFeature", "preserved");
+        var estimate = json.readValue("{\"energySelection\":\"USE_RATED_RANGE\"}", UpdateVehicleRequest.class);
+        response = service.updateVehicle(caller, ID, estimate);
+        assertThat(response.energyProfile().modelKind().name()).isEqualTo("RATED_RANGE");
+        assertThat(response.consumptionKwhPer100km()).isNull();
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+        var override = json.readValue("{\"energySelection\":\"USER_OVERRIDE\",\"consumptionKwhPer100km\":16.123}", UpdateVehicleRequest.class);
+        response = service.updateVehicle(caller, ID, override);
+        assertThat(response.consumptionKwhPer100km()).isEqualByComparingTo("16.123");
+        assertThat(response.energyProfile().consumptionSource().name()).isEqualTo("USER_OBSERVED");
+        assertThat(response.energyProfile().consumptionMeasurementBasis().name()).isEqualTo("UNKNOWN");
+        assertThat(service.updateVehicle(caller, ID, reset).consumptionKwhPer100km()).isNull();
+    }
+
+    @Test void legacyConfirmationPreservesValueAndUnknownProvenanceAndIsInvalidatedByEdits() throws Exception {
+        var saved = vehicle();
+        saved.setConsumptionKwhPer100km(new BigDecimal("17.537"));
+        when(vehicles.findByIdAndUserIdAndDeletedAtIsNull(ID, OWNER)).thenReturn(Optional.of(saved));
+        when(vehicles.save(saved)).thenReturn(saved);
+        var json = new JacksonConfiguration().objectMapper();
+        var response = service.updateVehicle(caller, ID,
+                json.readValue("{\"energySelection\":\"CONFIRM_LEGACY\"}", UpdateVehicleRequest.class));
+        assertThat(response.legacyConsumptionConfirmed()).isTrue();
+        assertThat(response.consumptionKwhPer100km()).isEqualByComparingTo("17.537");
+        assertThat(response.energyProfile().consumptionSource().name()).isEqualTo("UNKNOWN");
+        assertThat(service.getMyVehicle(caller, ID).legacyConsumptionConfirmed()).isTrue();
+        response = service.updateVehicle(caller, ID, json.readValue("{\"consumptionKwhPer100km\":18}", UpdateVehicleRequest.class));
+        assertThat(response.legacyConsumptionConfirmed()).isFalse();
+        assertThatThrownBy(() -> service.updateVehicle(caller, ID, json.readValue(
+                "{\"energySelection\":\"RESET_DEFAULT\",\"consumptionKwhPer100km\":19}", UpdateVehicleRequest.class)))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test void directDefaultRequiresConsumptionEvidenceAndBatterySideBasis() throws Exception {
+        var json = new JacksonConfiguration().objectMapper();
+        var tree = json.valueToTree(catalog.requireVehicle(CATALOG_ID));
+        var profile = (com.fasterxml.jackson.databind.node.ObjectNode) tree.get("energyProfile");
+        profile.put("modelKind", "CONSUMPTION");
+        profile.put("consumptionKwhPer100km", 15.2);
+        profile.put("consumptionSource", "MANUFACTURER_REPORTED");
+        profile.put("consumptionMeasurementBasis", "BATTERY_SIDE");
+        profile.put("sourceUrl", "https://example.com/consumption-specification");
+        var direct = json.treeToValue(tree, com.navio.usermanagementservice.dto.VehicleCatalogResponse.class);
+        assertThat(com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(direct, null).consumptionKwhPer100km()).isEqualByComparingTo("15.2");
+        var estimate = com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(direct, null, true);
+        assertThat(estimate.modelKind().name()).isEqualTo("RATED_RANGE");
+        assertThat(estimate.consumptionKwhPer100km()).isNull();
+        assertThat(estimate.sourceUrl()).isNull();
+        assertThat(estimate.consumptionStandard().name()).isEqualTo("NONE");
+        profile.put("consumptionMeasurementBasis", "WALL_SIDE");
+        assertThat(com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(
+                json.treeToValue(tree, com.navio.usermanagementservice.dto.VehicleCatalogResponse.class), null).consumptionKwhPer100km()).isNull();
+        profile.put("consumptionMeasurementBasis", "BATTERY_SIDE");
+        profile.putNull("sourceUrl");
+        assertThat(com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(
+                json.treeToValue(tree, com.navio.usermanagementservice.dto.VehicleCatalogResponse.class), null).modelKind().name()).isEqualTo("RATED_RANGE");
+        assertThat(com.navio.usermanagementservice.dto.VehicleEnergyProfile.defaultFor(null, null).modelKind().name()).isEqualTo("UNAVAILABLE");
+    }
+
+    @Test void catalogueDefaultCanBeSavedWithoutConsumption() throws Exception {
+        UserVehicle[] stored = new UserVehicle[1];
+        when(vehicles.save(any())).thenAnswer(call -> {
+            UserVehicle v = call.getArgument(0); v.setId(ID); stored[0] = v; return v;
+        });
+        when(vehicles.findByIdAndUserIdAndDeletedAtIsNull(ID, OWNER)).thenAnswer(call -> Optional.of(stored[0]));
+        var request = new JacksonConfiguration().objectMapper().readValue(
+                "{\"energySelection\":\"USE_DEFAULT\",\"startingBatteryPct\":80}", AddCatalogVehicleRequest.class);
+        var response = service.addCatalogVehicle(caller, CATALOG_ID, request);
+        assertThat(response.consumptionKwhPer100km()).isNull();
+        assertThat(response.energyProfile().modelKind().name()).isEqualTo("RATED_RANGE");
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+    }
+
     private UserVehicle vehicle() {
         return UserVehicle.builder().id(ID).userId(OWNER).make("BYD").model("ATTO 3")
                 .batteryCapacityKwh(new BigDecimal("60.48")).rangeKm(new BigDecimal("480"))

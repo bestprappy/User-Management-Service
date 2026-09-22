@@ -5,6 +5,9 @@ import com.navio.usermanagementservice.dto.VehicleRequests.UpdateVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleResponse;
 import com.navio.usermanagementservice.dto.VehicleRequests.AddCatalogVehicleRequest;
 import com.navio.usermanagementservice.dto.VehicleSettings;
+import com.navio.usermanagementservice.dto.VehicleRequests.ConsumptionProvenance;
+import com.navio.usermanagementservice.dto.VehicleRequests.EnergySelection;
+import com.navio.usermanagementservice.dto.VehicleEnergyProfile;
 import com.navio.usermanagementservice.repository.UserRepository;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.VehicleNotFoundException;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -94,6 +98,7 @@ public class UserVehicleService {
                 .build();
 
         applySettings(vehicle, request.settings());
+        applyEnergySelection(vehicle, request.energySelection(), request.consumptionKwhPer100km(), request.consumptionProvenance(), false);
 
         if (makeDefault) {
             // Clear any prior default first so the partial unique index
@@ -121,7 +126,7 @@ public class UserVehicleService {
         if (existing.isPresent()) {
             return updateVehicle(caller, existing.get().getId(), new UpdateVehicleRequest(
                     request.nickname(), null, null, null, null, null, request.consumptionKwhPer100km(),
-                    null, true, new VehicleSettings(null, null, request.startingBatteryPct(), null)));
+                    null, true, new VehicleSettings(null, null, request.startingBatteryPct(), null), request.consumptionProvenance(), request.energySelection()));
         }
         // Specifications are always resolved on the server, never copied from browser input.
         var response = addVehicle(caller, new CreateVehicleRequest(request.nickname(), catalog.make(),
@@ -130,6 +135,7 @@ public class UserVehicleService {
                 new VehicleSettings(catalog.maxAcKw(), catalog.maxDcKw(), request.startingBatteryPct(), catalog.imageUrl())));
         var vehicle = requireOwnedVehicle(caller, response.id());
         vehicle.getMetadata().put("catalog", userMapper.toCatalogMetadata(catalog));
+        applyEnergySelection(vehicle, request.energySelection(), request.consumptionKwhPer100km(), request.consumptionProvenance(), false);
         return userMapper.toVehicle(vehicleRepository.save(vehicle));
     }
 
@@ -149,6 +155,8 @@ public class UserVehicleService {
         if (changesSpecifications) {
             // An edited specification becomes a custom vehicle; retain no claim of official verification.
             vehicle.getMetadata().remove("catalog");
+            vehicle.getMetadata().remove("energyProfile");
+            vehicle.getMetadata().remove("legacyConsumptionConfirmed");
         }
         applySettings(vehicle, request.settings());
 
@@ -176,6 +184,7 @@ public class UserVehicleService {
         if (request.connectorTypes() != null) {
             vehicle.setConnectorTypes(normalizeConnectors(request.connectorTypes()));
         }
+        applyEnergySelection(vehicle, request.energySelection(), request.consumptionKwhPer100km(), request.consumptionProvenance(), !changesSpecifications);
 
         if (Boolean.TRUE.equals(request.isDefault()) && !vehicle.isDefault()) {
             vehicleRepository.clearDefaultForUser(caller.id(), vehicle.getId());
@@ -282,6 +291,69 @@ public class UserVehicleService {
             }
             vehicle.setImageUrl(imageUrl);
         }
+    }
+
+    private void applyConsumptionProvenance(UserVehicle vehicle, BigDecimal suppliedConsumption,
+            ConsumptionProvenance provenance) {
+        if (provenance != null && (suppliedConsumption == null || provenance.consumptionSource() == null)) {
+            throw new BusinessRuleException("Observed consumption provenance requires a consumption value and source");
+        }
+        if (suppliedConsumption == null) return;
+        vehicle.getMetadata().remove("legacyConsumptionConfirmed");
+        vehicle.getMetadata().remove("energyProfile");
+        if (provenance != null) {
+            var profile = userMapper.toEnergyProfile(vehicle).observed(provenance.basis());
+            vehicle.getMetadata().put("energyProfile", userMapper.toEnergyMetadata(profile));
+        }
+    }
+
+    private void applyEnergySelection(UserVehicle vehicle, EnergySelection selection,
+            BigDecimal consumption, ConsumptionProvenance provenance, boolean existing) {
+        // Omitted commands retain Phase 1 semantics for old clients and saved vehicles.
+        if (selection == null) {
+            applyConsumptionProvenance(vehicle, consumption, provenance);
+            return;
+        }
+        if (selection == EnergySelection.CONFIRM_LEGACY) {
+            if (!existing || consumption != null || provenance != null
+                    || vehicle.getConsumptionKwhPer100km() == null
+                    || userMapper.toEnergyProfile(vehicle).selectionMode() != VehicleEnergyProfile.SelectionMode.LEGACY_UNCONFIRMED) {
+                throw new BusinessRuleException("Confirm only an existing legacy consumption value without changing it");
+            }
+            vehicle.getMetadata().put("legacyConsumptionConfirmed", true);
+            return;
+        }
+        vehicle.getMetadata().remove("legacyConsumptionConfirmed");
+        if (selection == EnergySelection.USER_OVERRIDE) {
+            if (consumption == null || consumption.signum() <= 0) {
+                throw new BusinessRuleException("Enter a positive observed average consumption");
+            }
+            var catalog = userMapper.toVehicle(vehicle).catalog();
+            var base = VehicleEnergyProfile.defaultFor(catalog, vehicle.getRangeKm());
+            var observed = new VehicleEnergyProfile(1, VehicleEnergyProfile.ModelKind.CONSUMPTION,
+                    VehicleEnergyProfile.SelectionMode.USER_OVERRIDE, consumption,
+                    VehicleEnergyProfile.ConsumptionSource.USER_OBSERVED,
+                    provenance == null ? VehicleEnergyProfile.MeasurementBasis.UNKNOWN : provenance.basis(),
+                    VehicleEnergyProfile.Standard.NONE, null, base.usableBatteryCapacityKwh(), base.capacityBasis(),
+                    base.ratedRangeKm(), base.ratedRangeStandard());
+            vehicle.setConsumptionKwhPer100km(consumption);
+            vehicle.getMetadata().put("energyProfile", userMapper.toEnergyMetadata(observed));
+            return;
+        }
+        if (consumption != null || provenance != null) {
+            throw new BusinessRuleException("Default selection must not include a consumption override");
+        }
+        var catalog = userMapper.toVehicle(vehicle).catalog();
+        if (catalog != null) {
+            catalog = catalogService.requireVehicle(catalog.id());
+            vehicle.getMetadata().put("catalog", userMapper.toCatalogMetadata(catalog));
+        }
+        var profile = VehicleEnergyProfile.defaultFor(catalog, vehicle.getRangeKm(), selection == EnergySelection.USE_RATED_RANGE);
+        if (selection == EnergySelection.USE_RATED_RANGE && profile.modelKind() != VehicleEnergyProfile.ModelKind.RATED_RANGE) {
+            throw new BusinessRuleException("A positive rated range is required for NAVIO Estimate");
+        }
+        vehicle.setConsumptionKwhPer100km(profile.consumptionKwhPer100km());
+        vehicle.getMetadata().put("energyProfile", userMapper.toEnergyMetadata(profile));
     }
 
     private String trimToNull(String value) {

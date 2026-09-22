@@ -42,7 +42,7 @@ public class UserVehicleController {
     private final VehicleCatalogService vehicleCatalogService;
 
     @GetMapping("/catalog")
-    public ResponseEntity<List<VehicleCatalogResponse>> listCatalog(@CurrentUser AuthenticatedUser caller) {
+    public ResponseEntity<List<VehicleCatalogResponse>> listCatalog() {
         return ResponseEntity.ok(vehicleCatalogService.listVehicles());
     }
 

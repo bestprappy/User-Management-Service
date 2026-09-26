@@ -1,6 +1,9 @@
 package com.navio.usermanagementservice.controller;
 
+import com.navio.usermanagementservice.dto.ModerationDtos.AdminStatisticsResponse;
+import com.navio.usermanagementservice.dto.ModerationDtos.AdminUserDetailResponse;
 import com.navio.usermanagementservice.dto.ModerationDtos.AdminUserSummaryResponse;
+import com.navio.usermanagementservice.dto.ModerationDtos.ModerationEventResponse;
 import com.navio.usermanagementservice.dto.ModerationDtos.ModerationRequest;
 import com.navio.usermanagementservice.dto.ModerationDtos.ModerationResponse;
 import com.navio.usermanagementservice.dto.ModerationDtos.RoleAssignmentRequest;
@@ -55,6 +58,7 @@ import java.util.UUID;
 public class AdminUserController {
 
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_HISTORY_PAGE_SIZE = 50;
 
     private final AdminUserService adminUserService;
     private final UserModerationService userModerationService;
@@ -77,6 +81,33 @@ public class AdminUserController {
         Pageable pageable = PageRequest.of(page, Math.min(size, MAX_PAGE_SIZE),
                 Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(adminUserService.search(term, status, pageable));
+    }
+
+    /**
+     * Account counts for the dashboard.
+     *
+     * <p>Declared before {@code /{userId}}; Spring prefers the literal segment
+     * regardless, and a routing test pins that.
+     */
+    @GetMapping("/statistics")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    public ResponseEntity<AdminStatisticsResponse> statistics() {
+        return ResponseEntity.ok(adminUserService.statistics());
+    }
+
+    @GetMapping("/{userId}")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    public ResponseEntity<AdminUserDetailResponse> getUser(@PathVariable UUID userId) {
+        return ResponseEntity.ok(adminUserService.detail(userId));
+    }
+
+    @GetMapping("/{userId}/moderation-events")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    public ResponseEntity<Page<ModerationEventResponse>> moderationEvents(
+            @PathVariable UUID userId,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(MAX_HISTORY_PAGE_SIZE) int size) {
+        return ResponseEntity.ok(adminUserService.moderationEvents(userId, PageRequest.of(page, size)));
     }
 
     @PostMapping("/{userId}/suspend")

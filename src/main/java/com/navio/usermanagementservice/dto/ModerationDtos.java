@@ -87,4 +87,71 @@ public final class ModerationDtos {
             Instant suspendedUntil
     ) {
     }
+
+    /**
+     * Account counts for the admin dashboard.
+     *
+     * <p>These count Navio profiles, which are created on first sign-in — not
+     * every Keycloak identity. "Active" is the account status, not recent usage.
+     *
+     * @param joinedSince lower bound (inclusive) of {@code joinedLast30Days}.
+     * @param asOf        when the counts were taken.
+     */
+    public record AdminStatisticsResponse(
+            long totalUsers,
+            long activeUsers,
+            long suspendedUsers,
+            long joinedLast30Days,
+            Instant joinedSince,
+            Instant asOf
+    ) {
+    }
+
+    /**
+     * Account context for the moderation drawer.
+     *
+     * @param rolesVerified true when {@code roles} was read from Keycloak; false
+     *                      when Keycloak was unreachable and the local snapshot
+     *                      was used instead.
+     */
+    public record AdminUserDetailResponse(
+            UUID id,
+            String displayName,
+            String email,
+            String status,
+            List<NavioRole> roles,
+            boolean rolesVerified,
+            Instant createdAt,
+            Instant updatedAt,
+            Instant deletedAt,
+            ActiveSuspension activeSuspension
+    ) {
+    }
+
+    /** The suspension currently withholding access, if any. */
+    public record ActiveSuspension(
+            String reason,
+            Instant startsAt,
+            Instant endsAt,
+            UUID bannedByUserId,
+            String bannedByDisplayName
+    ) {
+    }
+
+    /**
+     * One moderation or role change applied to a user, read from the audit log.
+     *
+     * <p>Carries only the fields a moderator needs to understand the decision —
+     * never the raw before/after payloads, which can hold profile data.
+     */
+    public record ModerationEventResponse(
+            UUID id,
+            String action,
+            UUID actorUserId,
+            String actorDisplayName,
+            String reason,
+            String role,
+            Instant createdAt
+    ) {
+    }
 }

@@ -10,6 +10,6 @@ public record VehicleCatalogResponse(
         String market, BigDecimal batteryCapacityKwh, String batteryCapacityBasis,
         BigDecimal rangeKm, String rangeStandard, List<String> connectorTypes,
         BigDecimal maxAcKw, BigDecimal maxDcKw, String imageUrl,
-        String sourceUrl, LocalDate verifiedAt
+        String sourceUrl, LocalDate verifiedAt, Long version
 ) {
 }

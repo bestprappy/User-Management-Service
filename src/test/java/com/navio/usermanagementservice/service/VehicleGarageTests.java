@@ -40,7 +40,7 @@ class VehicleGarageTests {
 
     @BeforeEach void setUp() throws Exception {
         var json = new JacksonConfiguration().objectMapper();
-        catalog = new VehicleCatalogService(json);
+        catalog = CatalogFixtures.service(json);
         mapper = new UserMapper(json);
         service = new UserVehicleService(vehicles, mapper, audit, users, catalog);
     }

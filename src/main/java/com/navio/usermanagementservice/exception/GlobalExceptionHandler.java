@@ -41,6 +41,11 @@ import java.util.Map;
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.CatalogNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogNotFound(RuntimeException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
     @ExceptionHandler(com.navio.usermanagementservice.media.PictureException.class)
     public ResponseEntity<ErrorResponse> handlePicture(com.navio.usermanagementservice.media.PictureException ex) {
         return build(ex.getStatus(), ex.getMessage(), null);

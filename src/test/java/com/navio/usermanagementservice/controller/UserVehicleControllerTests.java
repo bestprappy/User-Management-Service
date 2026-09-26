@@ -63,8 +63,9 @@ class UserVehicleControllerTests {
     }
 
     @Test void catalogueLiteralWinsOverTheVehicleIdRoute() throws Exception {
-        var realCatalog = new VehicleCatalogService(new JacksonConfiguration().objectMapper());
-        when(catalog.listVehicles()).thenReturn(realCatalog.listVehicles());
+        var realCatalog = com.navio.usermanagementservice.service.CatalogFixtures.service(new JacksonConfiguration().objectMapper());
+        var seededVehicles = realCatalog.listVehicles();
+        when(catalog.listVehicles()).thenReturn(seededVehicles);
         mvc.perform(get(BASE + "/catalog").with(jwt().jwt(token -> token.subject(OWNER.toString()))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].market").value("TH"))
                 .andExpect(jsonPath("$[0].rangeStandard").value("NEDC"))

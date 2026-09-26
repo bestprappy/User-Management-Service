@@ -1,32 +1,30 @@
 package com.navio.usermanagementservice.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navio.usermanagementservice.dto.VehicleCatalogResponse;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
-import org.springframework.core.io.ClassPathResource;
+import com.navio.usermanagementservice.model.VehicleModel.Status;
+import com.navio.usermanagementservice.repository.VehicleModelRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.util.List;
 
-@Service
+@Service @RequiredArgsConstructor @Transactional(readOnly = true)
 public class VehicleCatalogService {
-    private final List<VehicleCatalogResponse> vehicles;
+    private final VehicleModelRepository repository;
 
-    public VehicleCatalogService(ObjectMapper objectMapper) throws IOException {
-        try (var input = new ClassPathResource("vehicles/thailand.json").getInputStream()) {
-            vehicles = List.copyOf(objectMapper.readValue(input, new TypeReference<List<VehicleCatalogResponse>>() {}));
-        }
-    }
-
-    /** Small curated catalogue; no live scraping or third-party dependency at request time. */
+    /** Compatibility array endpoint. New clients use the paginated public collection. */
     public List<VehicleCatalogResponse> listVehicles() {
-        return vehicles;
+        return repository.findAll((root, query, cb) -> cb.equal(root.get("status"), Status.PUBLISHED),
+                PageRequest.of(0, 1000, Sort.by("make", "model", "id")))
+                .map(VehicleModelService::publicResponse).getContent();
     }
 
     public VehicleCatalogResponse requireVehicle(String catalogId) {
-        return vehicles.stream().filter(vehicle -> vehicle.id().equals(catalogId)).findFirst()
-                .orElseThrow(() -> new BusinessRuleException("This vehicle is no longer in the catalogue. Refresh and choose again."));
+        return repository.findByIdAndStatus(catalogId, Status.PUBLISHED).map(VehicleModelService::publicResponse)
+                .orElseThrow(() -> new BusinessRuleException("This vehicle is no longer in the catalog. Refresh and choose again."));
     }
 }

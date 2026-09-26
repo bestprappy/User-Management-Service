@@ -43,6 +43,7 @@ public class RoleManagementService {
     private final KeycloakAdminClient keycloakAdminClient;
     private final AuditService auditService;
     private final OutboxService outboxService;
+    private final PrivilegedActionGuard privilegedActionGuard;
 
     @Transactional
     public RoleAssignmentResponse grant(AuthenticatedUser actor, UUID targetUserId, RoleAssignmentRequest request) {
@@ -90,6 +91,10 @@ public class RoleManagementService {
         if (actor.id().equals(target.getId()) && role == NavioRole.ADMIN) {
             throw new ForbiddenOperationException(
                     "You cannot revoke your own ADMIN role. Ask another administrator to do it.");
+        }
+        if (role == NavioRole.ADMIN) {
+            // Two admins demoting each other at once would leave none.
+            privilegedActionGuard.confirmAdministratorMayAct(actor, target.getId());
         }
 
         List<NavioRole> currentRoles = keycloakAdminClient.realmRolesOf(target.getAuthSubject());

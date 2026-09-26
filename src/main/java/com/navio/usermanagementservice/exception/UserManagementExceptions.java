@@ -14,6 +14,10 @@ public final class UserManagementExceptions {
     private UserManagementExceptions() {
     }
 
+    public static class CatalogNotFoundException extends RuntimeException {
+        public CatalogNotFoundException() { super("This vehicle model was not found"); }
+    }
+
     /** The requested Navio profile does not exist, or is soft-deleted. */
     public static class UserNotFoundException extends RuntimeException {
         public UserNotFoundException(UUID userId) {

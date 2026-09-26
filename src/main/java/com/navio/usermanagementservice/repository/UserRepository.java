@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -61,4 +64,22 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                       Pageable pageable);
 
     boolean existsByAuthSubject(String authSubject);
+
+    /**
+     * Locks the given profiles in a fixed (id) order for a privileged action.
+     *
+     * <p>Two administrators acting on each other at the same moment would
+     * otherwise both pass their checks and could remove every administrator.
+     * Locking both rows, always in the same order, makes the second action wait
+     * for the first and then re-check against its committed result — without
+     * risking a deadlock from opposite lock orders.
+     */
+    @Query(value = "SELECT id FROM iam.users WHERE id IN (:userIds) ORDER BY id FOR UPDATE", nativeQuery = true)
+    List<UUID> lockForModeration(@Param("userIds") Collection<UUID> userIds);
+
+    long countByDeletedAtIsNullAndStatusNot(UserStatus status);
+
+    long countByDeletedAtIsNullAndStatus(UserStatus status);
+
+    long countByDeletedAtIsNullAndStatusNotAndCreatedAtGreaterThanEqual(UserStatus status, Instant since);
 }

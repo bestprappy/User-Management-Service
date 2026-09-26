@@ -57,11 +57,17 @@ public class UserModerationService {
     private final BanStatusService banStatusService;
     private final AuditService auditService;
     private final OutboxService outboxService;
+    private final PrivilegedActionGuard privilegedActionGuard;
 
     @Transactional
     public ModerationResponse suspend(AuthenticatedUser actor, UUID targetUserId, ModerationRequest request) {
         User target = requireUser(targetUserId);
-        assertMayModerate(actor, target);
+        boolean targetIsPrivileged = assertMayModerate(actor, target);
+        if (targetIsPrivileged) {
+            // Suspending a moderator or admin can remove administrators; serialize
+            // it against the reverse action. See PrivilegedActionGuard.
+            privilegedActionGuard.confirmAdministratorMayAct(actor, target.getId());
+        }
 
         if (!userBanRepository.findActiveBans(targetUserId, Instant.now()).isEmpty()) {
             throw new ModerationConflictException("This account is already suspended");
@@ -159,8 +165,10 @@ public class UserModerationService {
      *
      * <p>The target's roles are read from Keycloak, the authoritative source,
      * rather than the {@code iam.user_roles} snapshot which may lag.
+     *
+     * @return whether the target holds a privileged role.
      */
-    private void assertMayModerate(AuthenticatedUser actor, User target) {
+    private boolean assertMayModerate(AuthenticatedUser actor, User target) {
         if (actor.id().equals(target.getId())) {
             throw new ForbiddenOperationException("You cannot moderate your own account");
         }
@@ -173,6 +181,7 @@ public class UserModerationService {
             throw new ForbiddenOperationException(
                     "Only an administrator can moderate a moderator or administrator account");
         }
+        return targetIsPrivileged;
     }
 
     private User requireUser(UUID userId) {

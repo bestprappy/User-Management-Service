@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * The three global roles Navio recognises.
+ * The four global roles Navio recognises.
  *
  * <p>Keycloak is authoritative for these; {@code iam.user_roles} only mirrors
  * them for display and audit. Resource-scoped roles (trip editor, group
@@ -16,7 +16,8 @@ public enum NavioRole {
 
     USER,
     MODERATOR,
-    ADMIN;
+    ADMIN,
+    OWNER;
 
     public static final String ROLE_PREFIX = "ROLE_";
 

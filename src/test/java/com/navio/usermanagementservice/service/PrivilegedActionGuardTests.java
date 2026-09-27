@@ -84,4 +84,14 @@ class PrivilegedActionGuardTests {
 
         assertThatCode(() -> guard.confirmAdministratorMayAct(actor, TARGET_ID)).doesNotThrowAnyException();
     }
+
+    @Test
+    void allowsAnOwnerWithoutASeparateAdministratorRole() {
+        AuthenticatedUser owner = new AuthenticatedUser(ACTOR_ID, ACTOR_SUBJECT,
+                "owner@example.com", "Owner", Set.of(NavioRole.OWNER));
+        when(userBanRepository.findActiveBans(eq(ACTOR_ID), any())).thenReturn(List.of());
+        when(keycloakAdminClient.realmRolesOf(ACTOR_SUBJECT)).thenReturn(List.of(NavioRole.USER, NavioRole.OWNER));
+
+        assertThatCode(() -> guard.confirmAdministratorMayAct(owner, TARGET_ID)).doesNotThrowAnyException();
+    }
 }

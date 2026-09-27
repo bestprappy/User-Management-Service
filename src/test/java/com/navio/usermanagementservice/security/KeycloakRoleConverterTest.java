@@ -24,10 +24,10 @@ class KeycloakRoleConverterTest {
 
     @Test
     void mapsRealmRolesToAuthorities() {
-        Jwt jwt = jwt(Map.of("realm_access", Map.of("roles", List.of("USER", "ADMIN"))));
+        Jwt jwt = jwt(Map.of("realm_access", Map.of("roles", List.of("USER", "ADMIN", "OWNER"))));
 
         assertThat(authorityNames(converter.convert(jwt)))
-                .containsExactlyInAnyOrder("ROLE_USER", "ROLE_ADMIN");
+                .containsExactlyInAnyOrder("ROLE_USER", "ROLE_ADMIN", "ROLE_OWNER");
     }
 
     @Test

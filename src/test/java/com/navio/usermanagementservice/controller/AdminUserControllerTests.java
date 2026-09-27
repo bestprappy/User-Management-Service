@@ -152,6 +152,15 @@ class AdminUserControllerTests {
     }
 
     @Test
+    void ownerMayReachRoleManagementEndpoint() throws Exception {
+        mvc.perform(post(BASE + "/" + TARGET_ID + "/roles").with(as(NavioRole.OWNER))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\",\"reason\":\"New administrator\"}"))
+                .andExpect(status().isOk());
+        verify(roleManagementService).grant(any(), eq(TARGET_ID), any());
+    }
+
+    @Test
     void aBanWithoutAReasonIsRejectedBeforeAnythingChanges() throws Exception {
         mvc.perform(post(BASE + "/" + TARGET_ID + "/suspend").with(as(NavioRole.ADMIN))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}"))

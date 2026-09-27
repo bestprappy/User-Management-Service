@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Keeps at least one administrator able to act.
+ * Serializes privileged actions and rechecks the actor's live staff role.
  *
  * <p>An administrator can never suspend themselves or revoke their own ADMIN
  * role, and a suspended caller is rejected before reaching a handler. What
@@ -49,9 +49,10 @@ public class PrivilegedActionGuard {
             throw new ForbiddenOperationException(
                     "Your account was suspended while this action was pending");
         }
-        // Read from Keycloak, not the token: the token still says ADMIN for up to
-        // its lifetime after the role was revoked.
-        if (!keycloakAdminClient.realmRolesOf(actor.authSubject()).contains(NavioRole.ADMIN)) {
+        // Read from Keycloak, not the token: an old token can still advertise
+        // ADMIN or OWNER after the role was revoked.
+        List<NavioRole> liveRoles = keycloakAdminClient.realmRolesOf(actor.authSubject());
+        if (!liveRoles.contains(NavioRole.ADMIN) && !liveRoles.contains(NavioRole.OWNER)) {
             throw new ForbiddenOperationException(
                     "Your administrator role was removed while this action was pending");
         }

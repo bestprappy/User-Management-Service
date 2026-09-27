@@ -26,7 +26,7 @@ import java.util.UUID;
 @RequestMapping("/v1/admin/audit-events")
 @RequiredArgsConstructor
 @Validated
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
 public class AdminAuditController {
     private final AdminAuditService service;
 

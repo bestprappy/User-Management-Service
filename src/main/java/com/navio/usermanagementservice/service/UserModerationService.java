@@ -174,6 +174,9 @@ public class UserModerationService {
         }
 
         List<NavioRole> targetRoles = keycloakAdminClient.realmRolesOf(target.getAuthSubject());
+        if (targetRoles.contains(NavioRole.OWNER)) {
+            throw new ForbiddenOperationException("Owner accounts can only be managed in Keycloak");
+        }
         boolean targetIsPrivileged =
                 targetRoles.contains(NavioRole.ADMIN) || targetRoles.contains(NavioRole.MODERATOR);
 

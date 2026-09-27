@@ -71,7 +71,7 @@ public class AdminUserController {
      * pull the entire user table — with emails — in one request.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<Page<AdminUserSummaryResponse>> searchUsers(
             @RequestParam(required = false) @Size(max = 200) String term,
             @RequestParam(required = false) UserStatus status,
@@ -90,19 +90,19 @@ public class AdminUserController {
      * regardless, and a routing test pins that.
      */
     @GetMapping("/statistics")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<AdminStatisticsResponse> statistics() {
         return ResponseEntity.ok(adminUserService.statistics());
     }
 
     @GetMapping("/{userId}")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<AdminUserDetailResponse> getUser(@PathVariable UUID userId) {
         return ResponseEntity.ok(adminUserService.detail(userId));
     }
 
     @GetMapping("/{userId}/moderation-events")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<Page<ModerationEventResponse>> moderationEvents(
             @PathVariable UUID userId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -111,7 +111,7 @@ public class AdminUserController {
     }
 
     @PostMapping("/{userId}/suspend")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<ModerationResponse> suspendUser(
             @CurrentUser AuthenticatedUser caller,
             @PathVariable UUID userId,
@@ -120,7 +120,7 @@ public class AdminUserController {
     }
 
     @PostMapping("/{userId}/reactivate")
-    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MODERATOR', 'ADMIN', 'OWNER')")
     public ResponseEntity<ModerationResponse> reactivateUser(
             @CurrentUser AuthenticatedUser caller,
             @PathVariable UUID userId,
@@ -130,7 +130,7 @@ public class AdminUserController {
 
     /** Granting a global role is an ADMIN-only operation. */
     @PostMapping("/{userId}/roles")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
     public ResponseEntity<RoleAssignmentResponse> grantRole(
             @CurrentUser AuthenticatedUser caller,
             @PathVariable UUID userId,
@@ -145,7 +145,7 @@ public class AdminUserController {
      * across proxies and clients; it is still recorded in the audit entry.
      */
     @DeleteMapping("/{userId}/roles/{role}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
     public ResponseEntity<RoleAssignmentResponse> revokeRole(
             @CurrentUser AuthenticatedUser caller,
             @PathVariable UUID userId,

@@ -114,7 +114,7 @@ public class SecurityConfig {
                         // narrow this further with @PreAuthorize — role changes,
                         // for instance, require ADMIN rather than MODERATOR.
                         .requestMatchers(ADMIN_PATTERN)
-                        .hasAnyRole(NavioRole.MODERATOR.name(), NavioRole.ADMIN.name())
+                        .hasAnyRole(NavioRole.MODERATOR.name(), NavioRole.ADMIN.name(), NavioRole.OWNER.name())
 
                         // Deny by default: any path not listed above still needs a
                         // valid token, so a newly added endpoint is protected even

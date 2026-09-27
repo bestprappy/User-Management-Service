@@ -15,7 +15,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 @RestController @RequestMapping("/v1/admin/vehicle-models")
-@RequiredArgsConstructor @Validated @PreAuthorize("hasRole('ADMIN')")
+@RequiredArgsConstructor @Validated @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
 public class AdminVehicleModelController {
     private final VehicleModelService service;
     @GetMapping

@@ -134,6 +134,17 @@ class UserModerationServiceTest {
     }
 
     @Test
+    void evenAnAdministratorCannotSuspendAnOwner() {
+        givenTarget(List.of(NavioRole.USER, NavioRole.OWNER));
+
+        assertThatThrownBy(() ->
+                service.suspend(admin(), TARGET_ID, new ModerationRequest("Policy violation", null)))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(keycloakAdminClient, never()).setUserEnabled(anyString(), eq(false));
+    }
+
+    @Test
     void adminMaySuspendAModerator() {
         givenTarget(List.of(NavioRole.MODERATOR));
         when(userBanRepository.findActiveBans(eq(TARGET_ID), any())).thenReturn(List.of());

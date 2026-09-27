@@ -79,6 +79,16 @@ class AdminUserServiceTests {
     }
 
     @Test
+    void unfilteredListUsesAQueryWithoutNullParameters() {
+        when(userRepository.findAllBy(any())).thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(service.search(null, null, PageRequest.of(0, 20))).isEmpty();
+
+        verify(userRepository).findAllBy(any());
+        verify(userRepository, never()).searchByTerm(any(), any());
+    }
+
+    @Test
     void detailReadsLiveRolesFromKeycloakAndDescribesTheActiveSuspension() {
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user(USER_ID, "Target", UserStatus.SUSPENDED)));
         when(keycloakAdminClient.realmRolesOf("kc-target")).thenReturn(List.of(NavioRole.USER, NavioRole.ADMIN));

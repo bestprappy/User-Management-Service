@@ -2,11 +2,14 @@ package com.navio.usermanagementservice.repository;
 
 import com.navio.usermanagementservice.model.User;
 import com.navio.usermanagementservice.model.UserStatus;
+import com.navio.usermanagementservice.model.UserRoleAssignment;
+import com.navio.usermanagementservice.security.NavioRole;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -41,6 +44,9 @@ class AdminUserRepositoryPostgresTests {
     @Autowired
     UserRepository userRepository;
 
+    @Autowired
+    UserRoleRepository userRoleRepository;
+
     @Test
     void dashboardCountsSeparateStatusesAndIgnoreDeletedProfiles() {
         long totalBefore = userRepository.countByDeletedAtIsNullAndStatusNot(UserStatus.DELETED);
@@ -73,6 +79,33 @@ class AdminUserRepositoryPostgresTests {
 
         assertThat(fromFirst).containsExactlyInAnyOrder(first.getId(), second.getId());
         assertThat(fromSecond).containsExactlyElementsOf(fromFirst);
+    }
+
+    @Test
+    void unfilteredAndFilteredAdminSearchesWorkWithPostgres() {
+        User active = save(UserStatus.ACTIVE, null);
+        User suspended = save(UserStatus.SUSPENDED, null);
+        String term = active.getEmail().substring(0, 12);
+        PageRequest page = PageRequest.of(0, 100);
+
+        assertThat(userRepository.findAllBy(page).getContent()).extracting(User::getId).contains(active.getId());
+        assertThat(userRepository.findByStatus(UserStatus.SUSPENDED, page).getContent())
+                .extracting(User::getId).contains(suspended.getId()).doesNotContain(active.getId());
+        assertThat(userRepository.searchByTerm(term, page).getContent())
+                .extracting(User::getId).contains(active.getId()).doesNotContain(suspended.getId());
+        assertThat(userRepository.searchByTermAndStatus(term, UserStatus.ACTIVE, page).getContent())
+                .extracting(User::getId).contains(active.getId());
+        assertThat(userRepository.searchByTermAndStatus(term, UserStatus.SUSPENDED, page)).isEmpty();
+    }
+
+    @Test
+    void ownerRoleSnapshotSatisfiesTheMigratedConstraint() {
+        User owner = save(UserStatus.ACTIVE, null);
+        userRoleRepository.saveAndFlush(UserRoleAssignment.builder()
+                .userId(owner.getId()).role(NavioRole.OWNER).build());
+
+        assertThat(userRoleRepository.findByUserId(owner.getId()))
+                .extracting(UserRoleAssignment::getRole).containsExactly(NavioRole.OWNER);
     }
 
     private User save(UserStatus status, Instant deletedAt) {

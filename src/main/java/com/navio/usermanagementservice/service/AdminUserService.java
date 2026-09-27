@@ -73,7 +73,16 @@ public class AdminUserService {
      */
     public Page<AdminUserSummaryResponse> search(String term, UserStatus status, Pageable pageable) {
         String normalizedTerm = (term == null || term.isBlank()) ? null : term.trim();
-        Page<User> page = userRepository.search(normalizedTerm, status, pageable);
+        Page<User> page;
+        if (normalizedTerm == null && status == null) {
+            page = userRepository.findAllBy(pageable);
+        } else if (normalizedTerm == null) {
+            page = userRepository.findByStatus(status, pageable);
+        } else if (status == null) {
+            page = userRepository.searchByTerm(normalizedTerm, pageable);
+        } else {
+            page = userRepository.searchByTermAndStatus(normalizedTerm, status, pageable);
+        }
 
         // Roles and bans are fetched once for the whole page rather than per row,
         // so a large page does not turn into 2N queries.

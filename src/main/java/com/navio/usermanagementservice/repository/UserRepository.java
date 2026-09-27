@@ -52,16 +52,26 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * profiles stay listed for moderators, since suppressing them would hide
      * exactly the accounts an investigation cares about.
      */
+    Page<User> findAllBy(Pageable pageable);
+
+    Page<User> findByStatus(UserStatus status, Pageable pageable);
+
     @Query("""
             SELECT u FROM User u
-            WHERE (:status IS NULL OR u.status = :status)
-              AND (:term IS NULL
-                   OR lower(u.email) LIKE lower(concat('%', :term, '%'))
+            WHERE lower(u.email) LIKE lower(concat('%', :term, '%'))
+               OR lower(u.displayName) LIKE lower(concat('%', :term, '%'))
+            """)
+    Page<User> searchByTerm(@Param("term") String term, Pageable pageable);
+
+    @Query("""
+            SELECT u FROM User u
+            WHERE u.status = :status
+              AND (lower(u.email) LIKE lower(concat('%', :term, '%'))
                    OR lower(u.displayName) LIKE lower(concat('%', :term, '%')))
             """)
-    Page<User> search(@Param("term") String term,
-                      @Param("status") UserStatus status,
-                      Pageable pageable);
+    Page<User> searchByTermAndStatus(@Param("term") String term,
+                                     @Param("status") UserStatus status,
+                                     Pageable pageable);
 
     boolean existsByAuthSubject(String authSubject);
 

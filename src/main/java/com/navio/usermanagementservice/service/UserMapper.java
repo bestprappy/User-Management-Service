@@ -8,6 +8,7 @@ import com.navio.usermanagementservice.dto.UserProfileResponse;
 import com.navio.usermanagementservice.dto.VehicleResponse;
 import com.navio.usermanagementservice.dto.VehicleCatalogResponse;
 import com.navio.usermanagementservice.dto.VehicleSettings;
+import com.navio.usermanagementservice.dto.VehicleEnergyProfile;
 import com.navio.usermanagementservice.model.User;
 import com.navio.usermanagementservice.model.UserVehicle;
 import com.navio.usermanagementservice.security.NavioRole;
@@ -77,7 +78,9 @@ public class UserMapper {
                 vehicle.getUpdatedAt(),
                 new VehicleSettings(vehicle.getMaxAcKw(), vehicle.getMaxDcKw(),
                         vehicle.getStartingBatteryPct(), vehicle.getImageUrl()),
-                toVehicleCatalog(vehicle)
+                toVehicleCatalog(vehicle),
+                toEnergyProfile(vehicle),
+                Boolean.TRUE.equals(vehicle.getMetadata().get("legacyConsumptionConfirmed"))
         );
     }
 
@@ -88,6 +91,31 @@ public class UserMapper {
 
     public Map<String, Object> toCatalogMetadata(VehicleCatalogResponse catalog) {
         return objectMapper.convertValue(catalog, new TypeReference<>() {});
+    }
+
+    public VehicleEnergyProfile toEnergyProfile(UserVehicle vehicle) {
+        var catalog = toVehicleCatalog(vehicle);
+        var fallback = VehicleEnergyProfile.unspecified(vehicle.getConsumptionKwhPer100km(),
+                vehicle.getRangeKm(), catalog == null ? null : catalog.rangeStandard(), false, catalog != null);
+        Object stored = vehicle.getMetadata().get("energyProfile");
+        if (stored == null) return fallback;
+        try {
+            var profile = objectMapper.convertValue(stored, VehicleEnergyProfile.class);
+            // Never attach old provenance to a different numeric consumption value.
+            if (profile.version() != 1 || !sameConsumption(profile.consumptionKwhPer100km(), vehicle.getConsumptionKwhPer100km())) return fallback;
+            return profile;
+        } catch (IllegalArgumentException exception) {
+            log.warn("Stored vehicle energy profile could not be parsed; returning unknown provenance");
+            return fallback;
+        }
+    }
+
+    private boolean sameConsumption(java.math.BigDecimal a, java.math.BigDecimal b) {
+        return a == null ? b == null : b != null && a.compareTo(b) == 0;
+    }
+
+    public Map<String, Object> toEnergyMetadata(VehicleEnergyProfile profile) {
+        return objectMapper.convertValue(profile, new TypeReference<>() {});
     }
 
     /**

@@ -26,6 +26,8 @@ public record VehicleResponse(
         Instant createdAt,
         Instant updatedAt,
         VehicleSettings settings,
-        VehicleCatalogResponse catalog
+        VehicleCatalogResponse catalog,
+        VehicleEnergyProfile energyProfile,
+        boolean legacyConsumptionConfirmed
 ) {
 }

@@ -24,7 +24,9 @@ public final class CatalogFixtures {
     public static VehicleCatalogService service(ObjectMapper json) throws Exception {
         var repository = mock(VehicleModelRepository.class);
         var models = vehicles(json).stream().map(vehicle -> {
-            var model = json.convertValue(vehicle, VehicleModel.class);
+            var fields = json.<com.fasterxml.jackson.databind.node.ObjectNode>valueToTree(vehicle);
+            fields.remove("energyProfile");
+            var model = json.convertValue(fields, VehicleModel.class);
             model.setVersion(0L); model.setStatus(VehicleModel.Status.PUBLISHED);
             return model;
         }).toList();

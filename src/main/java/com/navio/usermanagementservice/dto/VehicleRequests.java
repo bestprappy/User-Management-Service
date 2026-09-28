@@ -29,7 +29,22 @@ import java.util.List;
  */
 public final class VehicleRequests {
 
+    public enum EnergySelection { USE_DEFAULT, USER_OVERRIDE, RESET_DEFAULT, USE_RATED_RANGE, CONFIRM_LEGACY }
+
     private VehicleRequests() {
+    }
+
+    /** Only self-reported provenance may be written by a garage client. */
+    public record ConsumptionProvenance(
+            @NotNull UserSource consumptionSource,
+            UserBasis consumptionMeasurementBasis
+    ) {
+        public enum UserSource { USER_OBSERVED }
+        public enum UserBasis { UNKNOWN, TRIP_COMPUTER, BATTERY_SIDE }
+        public VehicleEnergyProfile.MeasurementBasis basis() {
+            return consumptionMeasurementBasis == null ? VehicleEnergyProfile.MeasurementBasis.UNKNOWN
+                    : VehicleEnergyProfile.MeasurementBasis.valueOf(consumptionMeasurementBasis.name());
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = false)
@@ -72,8 +87,20 @@ public final class VehicleRequests {
             List<String> connectorTypes,
 
             Boolean isDefault,
-            @Valid VehicleSettings settings
+            @Valid VehicleSettings settings,
+            @Valid ConsumptionProvenance consumptionProvenance,
+            EnergySelection energySelection
     ) {
+        public CreateVehicleRequest(String nickname, String make, String model, Short year, BigDecimal batteryCapacityKwh, BigDecimal rangeKm, BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault, VehicleSettings settings, ConsumptionProvenance consumptionProvenance) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm, consumptionKwhPer100km, connectorTypes, isDefault, settings, consumptionProvenance, null);
+        }
+        public CreateVehicleRequest(String nickname, String make, String model, Short year,
+                                    BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
+                                    BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault,
+                                    VehicleSettings settings) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm,
+                    consumptionKwhPer100km, connectorTypes, isDefault, settings, null);
+        }
         public CreateVehicleRequest(String nickname, String make, String model, Short year,
                                     BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
                                     BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault) {
@@ -118,8 +145,20 @@ public final class VehicleRequests {
             List<String> connectorTypes,
 
             Boolean isDefault,
-            @Valid VehicleSettings settings
+            @Valid VehicleSettings settings,
+            @Valid ConsumptionProvenance consumptionProvenance,
+            EnergySelection energySelection
     ) {
+        public UpdateVehicleRequest(String nickname, String make, String model, Short year, BigDecimal batteryCapacityKwh, BigDecimal rangeKm, BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault, VehicleSettings settings, ConsumptionProvenance consumptionProvenance) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm, consumptionKwhPer100km, connectorTypes, isDefault, settings, consumptionProvenance, null);
+        }
+        public UpdateVehicleRequest(String nickname, String make, String model, Short year,
+                                    BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
+                                    BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault,
+                                    VehicleSettings settings) {
+            this(nickname, make, model, year, batteryCapacityKwh, rangeKm,
+                    consumptionKwhPer100km, connectorTypes, isDefault, settings, null);
+        }
         public UpdateVehicleRequest(String nickname, String make, String model, Short year,
                                     BigDecimal batteryCapacityKwh, BigDecimal rangeKm,
                                     BigDecimal consumptionKwhPer100km, List<String> connectorTypes, Boolean isDefault) {
@@ -130,10 +169,25 @@ public final class VehicleRequests {
 
     public record AddCatalogVehicleRequest(
             @Size(max = 100) String nickname,
-            @NotNull @DecimalMin(value = "0", inclusive = false) @DecimalMax("99999.999")
+            @DecimalMin(value = "0", inclusive = false) @DecimalMax("99999.999")
             @Digits(integer = 5, fraction = 3)
             BigDecimal consumptionKwhPer100km,
-            @Min(0) @Max(100) Integer startingBatteryPct
+            @Min(0) @Max(100) Integer startingBatteryPct,
+            @Valid ConsumptionProvenance consumptionProvenance,
+            EnergySelection energySelection
     ) {
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        @jakarta.validation.constraints.AssertTrue(message = "Provide consumption or explicitly select the vehicle default")
+        public boolean isConsumptionSelectionValid() {
+            return consumptionKwhPer100km != null || energySelection == EnergySelection.USE_DEFAULT
+                    || energySelection == EnergySelection.RESET_DEFAULT
+                    || energySelection == EnergySelection.USE_RATED_RANGE;
+        }
+        public AddCatalogVehicleRequest(String nickname, BigDecimal consumptionKwhPer100km, Integer startingBatteryPct, ConsumptionProvenance consumptionProvenance) {
+            this(nickname, consumptionKwhPer100km, startingBatteryPct, consumptionProvenance, null);
+        }
+        public AddCatalogVehicleRequest(String nickname, BigDecimal consumptionKwhPer100km, Integer startingBatteryPct) {
+            this(nickname, consumptionKwhPer100km, startingBatteryPct, null);
+        }
     }
 }

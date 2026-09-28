@@ -109,6 +109,7 @@ public class SecurityConfig {
                         // CORS preflight carries no credentials and must not 401.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/vehicle-models", "/v1/vehicle-models/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/users/me/vehicles/catalog").permitAll()
 
                         // Coarse gate on the admin surface. Individual handlers
                         // narrow this further with @PreAuthorize — role changes,

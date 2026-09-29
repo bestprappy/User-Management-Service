@@ -40,7 +40,7 @@ class VehicleGarageTests {
 
     @BeforeEach void setUp() throws Exception {
         var json = new JacksonConfiguration().objectMapper();
-        catalog = new VehicleCatalogService(json);
+        catalog = CatalogFixtures.service(json);
         mapper = new UserMapper(json);
         service = new UserVehicleService(vehicles, mapper, audit, users, catalog);
     }
@@ -247,13 +247,15 @@ class VehicleGarageTests {
         assertThat(response.energyProfile().usableBatteryCapacityKwh()).isNull();
         saved.setMetadata(json.readValue(json.writeValueAsString(saved.getMetadata()),
                 new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {}));
-        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).usingRecursiveComparison()
+                .withComparatorForType(BigDecimal::compareTo, BigDecimal.class).isEqualTo(response.energyProfile());
         assertThat(saved.getMetadata()).containsEntry("otherFeature", "preserved");
         var estimate = json.readValue("{\"energySelection\":\"USE_RATED_RANGE\"}", UpdateVehicleRequest.class);
         response = service.updateVehicle(caller, ID, estimate);
         assertThat(response.energyProfile().modelKind().name()).isEqualTo("RATED_RANGE");
         assertThat(response.consumptionKwhPer100km()).isNull();
-        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).usingRecursiveComparison()
+                .withComparatorForType(BigDecimal::compareTo, BigDecimal.class).isEqualTo(response.energyProfile());
         var override = json.readValue("{\"energySelection\":\"USER_OVERRIDE\",\"consumptionKwhPer100km\":16.123}", UpdateVehicleRequest.class);
         response = service.updateVehicle(caller, ID, override);
         assertThat(response.consumptionKwhPer100km()).isEqualByComparingTo("16.123");
@@ -318,7 +320,29 @@ class VehicleGarageTests {
         var response = service.addCatalogVehicle(caller, CATALOG_ID, request);
         assertThat(response.consumptionKwhPer100km()).isNull();
         assertThat(response.energyProfile().modelKind().name()).isEqualTo("RATED_RANGE");
-        assertThat(service.getMyVehicle(caller, ID).energyProfile()).isEqualTo(response.energyProfile());
+        assertThat(service.getMyVehicle(caller, ID).energyProfile()).usingRecursiveComparison()
+                .withComparatorForType(BigDecimal::compareTo, BigDecimal.class).isEqualTo(response.energyProfile());
+    }
+
+    @Test void databaseCataloguePreservesVersionAndCapacityEvidenceWithoutFabricatingConsumption() {
+        for (String basis : List.of("USABLE", "GROSS", "UNKNOWN", "MANUFACTURER_DECLARED")) {
+            var model = new com.navio.usermanagementservice.model.VehicleModel();
+            model.setId("test"); model.setMake("Test"); model.setModel("EV"); model.setMarket("GB");
+            model.setVersion(7L); model.setBatteryCapacityKwh(new BigDecimal("60"));
+            model.setBatteryCapacityBasis(basis); model.setRangeKm(new BigDecimal("400"));
+            model.setRangeStandard("WLTP"); model.setSourceUrl("https://example.com/range");
+            var response = VehicleModelService.publicResponse(model);
+            assertThat(response.version()).isEqualTo(7L);
+            assertThat(response.market()).isEqualTo("GB");
+            assertThat(response.energyProfile().consumptionKwhPer100km()).isNull();
+            assertThat(response.energyProfile().sourceUrl()).isNull();
+            assertThat(response.energyProfile().consumptionStandard().name()).isEqualTo("NONE");
+            assertThat(response.energyProfile().ratedRangeStandard().name()).isEqualTo("WLTP");
+            assertThat(response.energyProfile().capacityBasis().name()).isEqualTo(
+                    basis.equals("MANUFACTURER_DECLARED") ? "MANUFACTURER_DECLARED_UNSPECIFIED" : basis);
+            assertThat(response.energyProfile().usableBatteryCapacityKwh()).isEqualTo(
+                    basis.equals("USABLE") ? new BigDecimal("60") : null);
+        }
     }
 
     private UserVehicle vehicle() {

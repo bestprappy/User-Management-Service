@@ -30,8 +30,8 @@ import java.util.UUID;
  * the snapshot is never written, so the mirror cannot claim a privilege that was
  * not actually granted.
  *
- * <p>Callers reach this only through {@code ADMIN}-gated endpoints. The checks
- * below are the second layer, covering mistakes rather than missing roles.
+ * <p>Callers reach this only through staff-gated endpoints. The checks below
+ * use live Keycloak roles so an old token cannot authorize a fresh grant.
  */
 @Service
 @RequiredArgsConstructor
@@ -43,13 +43,18 @@ public class RoleManagementService {
     private final KeycloakAdminClient keycloakAdminClient;
     private final AuditService auditService;
     private final OutboxService outboxService;
+    private final PrivilegedActionGuard privilegedActionGuard;
 
     @Transactional
     public RoleAssignmentResponse grant(AuthenticatedUser actor, UUID targetUserId, RoleAssignmentRequest request) {
         User target = requireUser(targetUserId);
         NavioRole role = request.role();
+        assertMayChangeRole(actor, target, role);
 
         List<NavioRole> currentRoles = keycloakAdminClient.realmRolesOf(target.getAuthSubject());
+        if (currentRoles.contains(NavioRole.OWNER)) {
+            throw new ForbiddenOperationException("Owner accounts can only be managed in Keycloak");
+        }
         if (currentRoles.contains(role)) {
             throw new ModerationConflictException("This user already has the " + role + " role");
         }
@@ -91,8 +96,12 @@ public class RoleManagementService {
             throw new ForbiddenOperationException(
                     "You cannot revoke your own ADMIN role. Ask another administrator to do it.");
         }
+        assertMayChangeRole(actor, target, role);
 
         List<NavioRole> currentRoles = keycloakAdminClient.realmRolesOf(target.getAuthSubject());
+        if (currentRoles.contains(NavioRole.OWNER)) {
+            throw new ForbiddenOperationException("Owner accounts can only be managed in Keycloak");
+        }
         if (!currentRoles.contains(role)) {
             throw new ModerationConflictException("This user does not have the " + role + " role");
         }
@@ -121,6 +130,22 @@ public class RoleManagementService {
     public List<NavioRole> rolesOf(UUID userId) {
         User target = requireUser(userId);
         return keycloakAdminClient.realmRolesOf(target.getAuthSubject());
+    }
+
+    private void assertMayChangeRole(AuthenticatedUser actor, User target, NavioRole role) {
+        if (role == NavioRole.OWNER) {
+            throw new ForbiddenOperationException("Owner roles can only be managed in Keycloak");
+        }
+        // Lock both profiles, then check Keycloak while the lock is held. A
+        // token issued before a demotion must not authorize a new role grant.
+        privilegedActionGuard.confirmAdministratorMayAct(actor, target.getId());
+        List<NavioRole> liveRoles = keycloakAdminClient.realmRolesOf(actor.authSubject());
+        if (role == NavioRole.ADMIN && !liveRoles.contains(NavioRole.OWNER)) {
+            throw new ForbiddenOperationException("Only an owner can change administrator roles");
+        }
+        if (!liveRoles.contains(NavioRole.ADMIN) && !liveRoles.contains(NavioRole.OWNER)) {
+            throw new ForbiddenOperationException("Your administrator role was removed while this action was pending");
+        }
     }
 
     private User requireUser(UUID userId) {

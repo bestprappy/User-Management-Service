@@ -66,6 +66,9 @@ class UserModerationServiceTest {
     @Mock
     private OutboxService outboxService;
 
+    @Mock
+    private PrivilegedActionGuard privilegedActionGuard;
+
     @InjectMocks
     private UserModerationService service;
 
@@ -131,6 +134,17 @@ class UserModerationServiceTest {
     }
 
     @Test
+    void evenAnAdministratorCannotSuspendAnOwner() {
+        givenTarget(List.of(NavioRole.USER, NavioRole.OWNER));
+
+        assertThatThrownBy(() ->
+                service.suspend(admin(), TARGET_ID, new ModerationRequest("Policy violation", null)))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(keycloakAdminClient, never()).setUserEnabled(anyString(), eq(false));
+    }
+
+    @Test
     void adminMaySuspendAModerator() {
         givenTarget(List.of(NavioRole.MODERATOR));
         when(userBanRepository.findActiveBans(eq(TARGET_ID), any())).thenReturn(List.of());
@@ -144,6 +158,38 @@ class UserModerationServiceTest {
         service.suspend(admin(), TARGET_ID, new ModerationRequest("Policy violation", null));
 
         verify(keycloakAdminClient).setUserEnabled(TARGET_SUBJECT, false);
+        // A privileged target must be serialized against the reverse action.
+        verify(privilegedActionGuard).confirmAdministratorMayAct(admin(), TARGET_ID);
+    }
+
+    @Test
+    void suspendingAnAdminIsRefusedWhenTheActingAdminLostStandingMeanwhile() {
+        givenTarget(List.of(NavioRole.ADMIN));
+        org.mockito.Mockito.doThrow(new ForbiddenOperationException("Your account was suspended"))
+                .when(privilegedActionGuard).confirmAdministratorMayAct(admin(), TARGET_ID);
+
+        assertThatThrownBy(() ->
+                service.suspend(admin(), TARGET_ID, new ModerationRequest("Crossing suspension", null)))
+                .isInstanceOf(ForbiddenOperationException.class);
+
+        verify(userBanRepository, never()).save(any(UserBan.class));
+        verify(keycloakAdminClient, never()).setUserEnabled(anyString(), eq(false));
+    }
+
+    @Test
+    void suspendingAnOrdinaryUserDoesNotTakeThePrivilegedLock() {
+        givenTarget(List.of(NavioRole.USER));
+        when(userBanRepository.findActiveBans(eq(TARGET_ID), any())).thenReturn(List.of());
+        when(userBanRepository.save(any(UserBan.class))).thenAnswer(call -> {
+            UserBan ban = call.getArgument(0);
+            ban.setId(UUID.randomUUID());
+            return ban;
+        });
+        when(userRepository.save(any(User.class))).thenAnswer(call -> call.getArgument(0));
+
+        service.suspend(moderator(), TARGET_ID, new ModerationRequest("Spam reports confirmed", null));
+
+        org.mockito.Mockito.verifyNoInteractions(privilegedActionGuard);
     }
 
     @Test

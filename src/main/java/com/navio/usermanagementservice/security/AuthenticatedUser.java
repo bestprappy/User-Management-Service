@@ -35,10 +35,10 @@ public record AuthenticatedUser(
 
     /** Moderators and admins may act on other users' records. */
     public boolean canModerate() {
-        return hasRole(NavioRole.MODERATOR) || hasRole(NavioRole.ADMIN);
+        return hasRole(NavioRole.MODERATOR) || hasRole(NavioRole.ADMIN) || hasRole(NavioRole.OWNER);
     }
 
     public boolean isAdmin() {
-        return hasRole(NavioRole.ADMIN);
+        return hasRole(NavioRole.ADMIN) || hasRole(NavioRole.OWNER);
     }
 }

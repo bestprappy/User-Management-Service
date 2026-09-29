@@ -108,13 +108,14 @@ public class SecurityConfig {
 
                         // CORS preflight carries no credentials and must not 401.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/vehicle-models", "/v1/vehicle-models/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/users/me/vehicles/catalog").permitAll()
 
                         // Coarse gate on the admin surface. Individual handlers
                         // narrow this further with @PreAuthorize — role changes,
                         // for instance, require ADMIN rather than MODERATOR.
                         .requestMatchers(ADMIN_PATTERN)
-                        .hasAnyRole(NavioRole.MODERATOR.name(), NavioRole.ADMIN.name())
+                        .hasAnyRole(NavioRole.MODERATOR.name(), NavioRole.ADMIN.name(), NavioRole.OWNER.name())
 
                         // Deny by default: any path not listed above still needs a
                         // valid token, so a newly added endpoint is protected even

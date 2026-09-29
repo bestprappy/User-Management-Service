@@ -71,7 +71,8 @@ class PostgresSchemaTests {
         entityManager.clear();
         var reset = entityManager.find(com.navio.usermanagementservice.model.UserVehicle.class, id);
         assertThat(reset.getConsumptionKwhPer100km()).isNull();
-        assertThat(mapper.toEnergyProfile(reset)).isEqualTo(fallback);
+        assertThat(mapper.toEnergyProfile(reset)).usingRecursiveComparison()
+                .withComparatorForType(java.math.BigDecimal::compareTo, java.math.BigDecimal.class).isEqualTo(fallback);
         assertThat(reset.getMetadata()).containsKey("otherFeature");
     }
 

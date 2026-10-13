@@ -46,6 +46,16 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
     }
 
+    @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.GuideNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleGuideNotFound(RuntimeException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.GuideConflictException.class)
+    public ResponseEntity<ErrorResponse> handleGuideConflict(RuntimeException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), "Open the existing guide instead");
+    }
+
     @ExceptionHandler(com.navio.usermanagementservice.media.PictureException.class)
     public ResponseEntity<ErrorResponse> handlePicture(com.navio.usermanagementservice.media.PictureException ex) {
         return build(ex.getStatus(), ex.getMessage(), null);

@@ -30,6 +30,7 @@ public class AdminAuditService {
             "make", "model", "trim", "year", "market", "batteryCapacityKwh",
             "batteryCapacityBasis", "rangeKm", "rangeStandard", "maxAcKw",
             "maxDcKw", "connectorTypes", "sourceUrl", "verifiedAt");
+    private static final Set<String> GUIDE_FIELDS = Set.of("name", "country", "status", "placeCount");
     private final AuditLogRepository auditLogs;
     private final UserRepository users;
 
@@ -56,9 +57,11 @@ public class AdminAuditService {
                 safeCatalogState(entry.getResourceType(), entry.getAfter())));
     }
 
-    // Audit storage includes profile data and request context. Only public vehicle specs
-    // are permitted through the global activity API; all other events show metadata only.
+    // Audit storage includes profile data and request context. Only public vehicle specs and
+    // a guide's public summary are permitted through the global activity API; all other
+    // events show metadata only.
     private Map<String, Object> safeCatalogState(String resourceType, Map<String, Object> state) {
+        if ("GUIDE".equals(resourceType) && state != null) return safeGuideState(state);
         if (!"VEHICLE_MODEL".equals(resourceType) || state == null) return Map.of();
         Map<String, Object> safe = new HashMap<>();
         Object status = state.get("status");
@@ -69,6 +72,15 @@ public class AdminAuditService {
                 if (value instanceof String || value instanceof Number || value instanceof Boolean
                         || value instanceof java.util.List<?>) safe.put(field, value);
             }
+        }
+        return safe;
+    }
+
+    private static Map<String, Object> safeGuideState(Map<String, Object> state) {
+        Map<String, Object> safe = new HashMap<>();
+        for (String field : GUIDE_FIELDS) {
+            Object value = state.get(field);
+            if (value instanceof String || value instanceof Number) safe.put(field, value);
         }
         return safe;
     }

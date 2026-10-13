@@ -26,4 +26,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
 
     Page<AuditLog> findByResourceTypeAndResourceIdAndActionInOrderByCreatedAtDesc(
             String resourceType, UUID resourceId, Collection<String> actions, Pageable pageable);
+
+    /** Whether this actor already has this action on this resource since a moment, to throttle autosave edits. */
+    boolean existsByResourceTypeAndResourceIdAndActorUserIdAndActionAndCreatedAtAfter(
+            String resourceType, UUID resourceId, UUID actorUserId, String action, java.time.Instant after);
 }

@@ -18,6 +18,16 @@ public final class UserManagementExceptions {
         public CatalogNotFoundException() { super("This vehicle model was not found"); }
     }
 
+    /** No guide has this id, or, for travelers, it is not published. */
+    public static class GuideNotFoundException extends RuntimeException {
+        public GuideNotFoundException() { super("This guide was not found"); }
+    }
+
+    /** The destination already has a guide; each destination has one. */
+    public static class GuideConflictException extends RuntimeException {
+        public GuideConflictException(String message) { super(message); }
+    }
+
     /** The requested Navio profile does not exist, or is soft-deleted. */
     public static class UserNotFoundException extends RuntimeException {
         public UserNotFoundException(UUID userId) {

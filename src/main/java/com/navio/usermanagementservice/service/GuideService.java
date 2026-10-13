@@ -1,6 +1,5 @@
 package com.navio.usermanagementservice.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navio.usermanagementservice.dto.GuideDtos.*;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
@@ -152,22 +151,7 @@ public class GuideService {
     // ------------------------------------------------------------ rules
 
     /** Checks what the field annotations cannot: that the document's parts refer to each other. */
-    void validateContent(Content content) {
-        Set<String> categoryIds = new HashSet<>();
-        for (Category category : content.categories()) {
-            if (!categoryIds.add(category.id())) throw new BusinessRuleException("Each category needs its own id");
-        }
-        content.lists().forEach((key, list) -> {
-            if (!key.equals(list.id())) throw new BusinessRuleException("A list's key must match its id");
-            if (!categoryIds.contains(list.categoryId())) throw new BusinessRuleException("A list uses a category that does not exist");
-        });
-        content.places().forEach((key, place) -> {
-            if (!key.equals(place.providerPlaceId())) throw new BusinessRuleException("A place's key must match its provider id");
-            if (!place.id().equals(place.provider() + ":" + place.providerPlaceId())) {
-                throw new BusinessRuleException("A place's id must be its provider and provider id");
-            }
-        });
-    }
+    void validateContent(Content content) { GuideDocumentSupport.validateContent(content); }
 
     private void validatePublication(Guide guide) {
         if (placeCount(guide) == 0) throw new BusinessRuleException("Add at least one place before publishing");
@@ -175,30 +159,9 @@ public class GuideService {
 
     // ------------------------------------------------------------ mapping
 
-    private void apply(Guide guide, Fields fields) {
-        guide.setName(fields.name().trim());
-        guide.setCountry(fields.country().trim());
-        guide.setCountryCode(blankToNull(fields.countryCode()));
-        guide.setDestinationProvider(fields.destination().provider());
-        guide.setDestinationPlaceId(fields.destination().providerPlaceId().trim());
-        guide.setDestinationName(fields.destination().name().trim());
-        guide.setDestinationLat(fields.destination().lat());
-        guide.setDestinationLng(fields.destination().lng());
-        guide.setDescription(fields.description());
-        guide.setCoverPlaceId(fields.coverPlaceId().trim());
-        guide.setContent(json.convertValue(fields.content(), new TypeReference<>() {}));
-    }
-
-    private Content content(Guide guide) {
-        return json.convertValue(guide.getContent(), Content.class);
-    }
-
-    private Fields fields(Guide guide) {
-        return new Fields(guide.getName(), guide.getCountry(), guide.getCountryCode(),
-                new Destination(guide.getDestinationProvider(), guide.getDestinationPlaceId(), guide.getDestinationName(),
-                        guide.getDestinationLat(), guide.getDestinationLng()),
-                guide.getDescription(), guide.getCoverPlaceId(), content(guide));
-    }
+    private void apply(Guide guide, Fields fields) { GuideDocumentSupport.apply(guide, fields, json); }
+    private Content content(Guide guide) { return GuideDocumentSupport.content(guide, json); }
+    private Fields fields(Guide guide) { return GuideDocumentSupport.fields(guide, json); }
 
     private AdminResponse adminResponse(Guide guide) {
         Map<UUID, String> names = names(Arrays.asList(guide.getCreatedBy(), guide.getUpdatedBy()));
@@ -231,13 +194,7 @@ public class GuideService {
     }
 
     /** Place cards in the text that point at a known place. */
-    private int placeCount(Guide guide) {
-        Content content = content(guide);
-        int count = 0;
-        Matcher blocks = BLOCK_LINE.matcher(content.body());
-        while (blocks.find()) if ("guidePlace".equals(blocks.group(1)) && content.places().containsKey(blocks.group(2))) count++;
-        return count;
-    }
+    private int placeCount(Guide guide) { return GuideDocumentSupport.placeCount(guide, json); }
 
     /** The audit trail keeps the guide's identity and state, not its whole text. */
     private Map<String, Object> auditState(Guide guide) {

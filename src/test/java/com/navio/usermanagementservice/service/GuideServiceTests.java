@@ -35,11 +35,12 @@ class GuideServiceTests {
     @Mock UserRepository users;
     @Mock AuditService audit;
     @Mock AuditLogRepository auditLogs;
+    @Mock PaletteColorService palette;
     final ObjectMapper json = new JacksonConfiguration().objectMapper();
     GuideService service;
 
     @BeforeEach void setUp() {
-        service = new GuideService(repository, users, audit, auditLogs, json);
+        service = new GuideService(repository, users, audit, auditLogs, json, palette);
         lenient().when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -86,6 +87,13 @@ class GuideServiceTests {
         when(repository.existsByDestinationProviderAndDestinationPlaceId("GOOGLE", "ChIJ-cm")).thenReturn(true);
         assertThatThrownBy(() -> service.create(ADMIN, new CreateRequest(fields(content(HEADER, Map.of())))))
                 .isInstanceOf(GuideConflictException.class).hasMessage("Chiang Mai already has a guide");
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test void aGuideCannotUseAColorThatWasNeverInThePalette() {
+        doThrow(new BusinessRuleException("A category uses a color that is not in the palette")).when(palette).requireKnown(List.of("blue"));
+        assertThatThrownBy(() -> service.create(ADMIN, new CreateRequest(fields(content(HEADER, Map.of())))))
+                .isInstanceOf(BusinessRuleException.class);
         verify(repository, never()).saveAndFlush(any());
     }
 

@@ -111,6 +111,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/v1/vehicle-models", "/v1/vehicle-models/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/guides", "/v1/guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/users/me/vehicles/catalog").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/palette-colors").permitAll()
 
                         // Coarse gate on the admin surface. Individual handlers
                         // narrow this further with @PreAuthorize — role changes,

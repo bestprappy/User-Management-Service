@@ -28,6 +28,7 @@ public class UserGuideService {
     private final UserGuideRepository repository;
     private final UserRepository users;
     private final ObjectMapper json;
+    private final PaletteColorService palette;
 
     public Page<Summary> mine(AuthenticatedUser caller, String term, Status status, Pageable page) {
         UUID owner = owner(caller);
@@ -64,6 +65,7 @@ public class UserGuideService {
         guide.setId(UUID.randomUUID());
         guide.setCreatedBy(caller.id());
         GuideDocumentSupport.validateContent(request.guide().content());
+        palette.requireKnown(GuideDocumentSupport.colorIds(request.guide().content()));
         GuideDocumentSupport.apply(guide, request.guide(), json);
         return save(caller, guide);
     }
@@ -73,6 +75,7 @@ public class UserGuideService {
         UserGuide guide = requireOwned(caller, id);
         checkVersion(guide, request.expectedVersion());
         GuideDocumentSupport.validateContent(request.guide().content());
+        palette.requireKnown(GuideDocumentSupport.colorIds(request.guide().content()));
         GuideDocumentSupport.apply(guide, request.guide(), json);
         if (guide.getStatus() == Status.PUBLISHED) validatePublication(guide);
         return save(caller, guide);

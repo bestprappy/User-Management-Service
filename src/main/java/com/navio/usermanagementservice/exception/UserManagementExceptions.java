@@ -18,6 +18,16 @@ public final class UserManagementExceptions {
         public CatalogNotFoundException() { super("This vehicle model was not found"); }
     }
 
+    /** No palette color has this id. */
+    public static class PaletteColorNotFoundException extends RuntimeException {
+        public PaletteColorNotFoundException() { super("This color was not found"); }
+    }
+
+    /** Another palette color already uses this hex or name. */
+    public static class PaletteColorConflictException extends RuntimeException {
+        public PaletteColorConflictException(String message) { super(message); }
+    }
+
     /** No guide has this id, or, for travelers, it is not published. */
     public static class GuideNotFoundException extends RuntimeException {
         public GuideNotFoundException() { super("This guide was not found"); }

@@ -30,10 +30,11 @@ class UserGuideServiceTests {
     static final String BODY = "<div data-embed=\"placeList\" data-list-id=\"visit\"></div>\n\n<div data-embed=\"guidePlace\" data-place-id=\"temple\"></div>";
     @Mock UserGuideRepository repository;
     @Mock UserRepository users;
+    @Mock PaletteColorService palette;
     ObjectMapper json = new JacksonConfiguration().objectMapper();
     UserGuideService service;
     @BeforeEach void setup() {
-        service = new UserGuideService(repository, users, json);
+        service = new UserGuideService(repository, users, json, palette);
         lenient().when(repository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
     static Fields fields(String body) {

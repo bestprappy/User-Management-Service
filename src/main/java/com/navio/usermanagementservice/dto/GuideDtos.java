@@ -23,14 +23,13 @@ public final class GuideDtos {
     /** Ids written into the guide text: list ids, category ids, provider place ids. */
     public static final String BLOCK_ID = "[A-Za-z0-9_-]{1,255}";
     public static final String ICON_IDS = "landmark|utensils|bed|coffee|wine|shopping|trees|waves|mountain|camera|ticket|music|train|charging|baby|heart";
-    public static final String COLOR_IDS = "teal|cyan|blue|indigo|violet|rose|coral|amber|emerald|pine|navy|slate|plum|wine|brick|rust|lime|olive|gold|sky|fuchsia|mocha|stone|graphite";
     public static final String PROVIDERS = "GOOGLE|MAPBOX";
 
     public record Category(
             @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{1,64}") String id,
             @NotBlank @Size(max = 40) String name,
             @NotNull @Pattern(regexp = ICON_IDS) String iconId,
-            @NotNull @Pattern(regexp = COLOR_IDS) String colorId) {}
+            @NotNull @Pattern(regexp = PaletteColorDtos.ID) String colorId) {}
 
     public record ListHeader(
             @NotNull @Pattern(regexp = BLOCK_ID) String id,

@@ -11,6 +11,7 @@ import com.navio.usermanagementservice.security.NavioRole;
 import com.navio.usermanagementservice.security.RequestContext;
 import com.navio.usermanagementservice.service.AuditService;
 import com.navio.usermanagementservice.service.GuideService;
+import com.navio.usermanagementservice.service.PaletteColorService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +35,7 @@ import static org.assertj.core.api.Assertions.*;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnabledIfEnvironmentVariable(named = "NAVIO_TEST_DB_URL", matches = ".+")
-@Import({GuideService.class, AuditService.class, RequestContext.class, JacksonConfiguration.class})
+@Import({GuideService.class, PaletteColorService.class, AuditService.class, RequestContext.class, JacksonConfiguration.class})
 class GuidePostgresTests {
     static final UUID SEED = UUID.fromString("8f2b6c1e-5d3a-4c7b-9e1f-2a6d4b8c0e01");
     @Autowired GuideService service;

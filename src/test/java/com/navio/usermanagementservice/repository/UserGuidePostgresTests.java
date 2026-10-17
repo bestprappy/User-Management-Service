@@ -5,6 +5,8 @@ import com.navio.usermanagementservice.dto.GuideDtos.*;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.GuideNotFoundException;
 import com.navio.usermanagementservice.model.User;
 import com.navio.usermanagementservice.security.*;
+import com.navio.usermanagementservice.service.AuditService;
+import com.navio.usermanagementservice.service.PaletteColorService;
 import com.navio.usermanagementservice.service.UserGuideService;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -25,7 +27,7 @@ import static org.assertj.core.api.Assertions.*;
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @EnabledIfEnvironmentVariable(named = "NAVIO_TEST_DB_URL", matches = ".+")
-@Import({UserGuideService.class, JacksonConfiguration.class})
+@Import({UserGuideService.class, PaletteColorService.class, AuditService.class, RequestContext.class, JacksonConfiguration.class})
 class UserGuidePostgresTests {
     @Autowired UserGuideService service;
     @Autowired UserGuideRepository guides;

@@ -29,6 +29,11 @@ final class GuideDocumentSupport {
         });
     }
 
+    /** The palette colors the document's categories use. */
+    static List<String> colorIds(Content content) {
+        return content.categories().stream().map(Category::colorId).distinct().toList();
+    }
+
     static void apply(GuideDocument guide, Fields fields, ObjectMapper json) {
         guide.setName(fields.name().trim());
         guide.setCountry(fields.country().trim());

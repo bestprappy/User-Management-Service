@@ -46,6 +46,7 @@ public class GuideService {
     private final AuditService audit;
     private final AuditLogRepository auditLogs;
     private final ObjectMapper json;
+    private final PaletteColorService palette;
 
     // ------------------------------------------------------------ admin reads
 
@@ -151,7 +152,10 @@ public class GuideService {
     // ------------------------------------------------------------ rules
 
     /** Checks what the field annotations cannot: that the document's parts refer to each other. */
-    void validateContent(Content content) { GuideDocumentSupport.validateContent(content); }
+    void validateContent(Content content) {
+        GuideDocumentSupport.validateContent(content);
+        palette.requireKnown(GuideDocumentSupport.colorIds(content));
+    }
 
     private void validatePublication(Guide guide) {
         if (placeCount(guide) == 0) throw new BusinessRuleException("Add at least one place before publishing");

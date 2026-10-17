@@ -46,6 +46,16 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
     }
 
+    @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.PaletteColorNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handlePaletteColorNotFound(RuntimeException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.PaletteColorConflictException.class)
+    public ResponseEntity<ErrorResponse> handlePaletteColorConflict(RuntimeException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), "Restore the retired color or pick a different one");
+    }
+
     @ExceptionHandler(com.navio.usermanagementservice.exception.UserManagementExceptions.GuideNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleGuideNotFound(RuntimeException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
@@ -207,6 +217,18 @@ public class GlobalExceptionHandler {
     }
 
     // --- Fallback ------------------------------------------------------------
+
+    /** A known path called with a method it does not support is the caller's mistake, not a server fault. */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "This operation is not supported", null);
+    }
+
+    /** No route matches the path. Routine, so it is not logged. */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoRoute(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        return build(HttpStatus.NOT_FOUND, "Not found", null);
+    }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {

@@ -36,4 +36,30 @@ class SavedLibraryUpgradePostgresTests {
             } finally {admin.createStatement().execute("DROP DATABASE "+database+" WITH (FORCE)");}
         }
     }
+
+    /** Production shares one database; community-service V1 created pg_trgm under its social search_path. */
+    @Test void migratesWhenAnotherServiceAlreadyInstalledTrigramsOutsidePublic() throws Exception {
+        String base=System.getenv("NAVIO_TEST_DB_URL");String user=System.getenv().getOrDefault("NAVIO_TEST_DB_USERNAME","tripplanner");
+        String password=System.getenv().getOrDefault("NAVIO_TEST_DB_PASSWORD","tripplanner");
+        String database="library_trgm_"+UUID.randomUUID().toString().replace("-","");
+        String url=base.substring(0,base.lastIndexOf('/')+1)+database;
+        try(var admin=DriverManager.getConnection(base,user,password)) {
+            admin.createStatement().execute("CREATE DATABASE "+database);
+            try {
+                try(var c=DriverManager.getConnection(url,user,password)) {
+                    c.createStatement().execute("CREATE SCHEMA social");
+                    c.createStatement().execute("CREATE EXTENSION pg_trgm WITH SCHEMA social");
+                }
+                Flyway.configure().dataSource(url,user,password).schemas("iam").defaultSchema("iam").load().migrate();
+                try(var c=DriverManager.getConnection(url,user,password)) {
+                    var schema=c.createStatement().executeQuery("SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='pg_trgm'");
+                    schema.next();assertThat(schema.getString(1)).isEqualTo("public");
+                    var similarity=c.createStatement().executeQuery("SELECT public.similarity('tokyo cafe','tokyo cafes')>0.18");
+                    similarity.next();assertThat(similarity.getBoolean(1)).isTrue();
+                }
+                // Every later startup runs the same callback; it must stay a no-op.
+                Flyway.configure().dataSource(url,user,password).schemas("iam").defaultSchema("iam").load().migrate();
+            } finally {admin.createStatement().execute("DROP DATABASE "+database+" WITH (FORCE)");}
+        }
+    }
 }

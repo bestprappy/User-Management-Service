@@ -28,8 +28,67 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@org.springframework.context.annotation.Import(com.navio.usermanagementservice.library.SavedLibraryRepository.class)
 @EnabledIfEnvironmentVariable(named = "NAVIO_TEST_DB_URL", matches = ".+")
 class PostgresSchemaTests {
+    @Autowired com.navio.usermanagementservice.library.SavedLibraryRepository library;
+
+    @Test void libraryDeduplicatesSourcesSearchesWholeCollectionAndEnforcesTrashOwnership() {
+        var user=java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",user,user.toString(),user+"@example.com","Library test");
+        var item=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"PLACE","google:abc","Café Tokyo","Japan","ChIJabc",1.0,2.0,"Japan","Tokyo","Cafe",null,null,null,null,null,java.util.List.of());
+        var a=library.save(user,item,null,null);
+        var b=library.save(user,item,new com.navio.usermanagementservice.library.LibraryContracts.Source("token","Trip"),null);
+        assertThat(b.id()).isEqualTo(a.id());assertThat(b.sources()).hasSize(1);
+        var q=new com.navio.usermanagementservice.library.LibraryContracts.Query("PLACE","cafe","NEWEST",0,24,null,null,null,null,null,null);
+        assertThat(library.list(user,q).total()).isEqualTo(1);
+        assertThat(library.states(java.util.UUID.randomUUID(),java.util.List.of("google:abc")).getFirst().saved()).isFalse();
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->library.remove(java.util.UUID.randomUUID(),a.id()))).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.SavedPlaceNotFoundException.class);
+        library.remove(user,a.id());assertThat(library.list(user,q).total()).isZero();
+        assertThat(library.restore(user,a.id(),50).id()).isEqualTo(a.id());
+        library.remove(user,a.id());jdbc.update("UPDATE iam.saved_library_items SET deleted_at=now()-interval '8 days' WHERE id=?",a.id());
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->library.restore(user,a.id(),50))).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.SavedPlaceNotFoundException.class);
+        library.expire(user);assertThat(jdbc.queryForObject("SELECT count(*) FROM iam.saved_library_sources WHERE item_id=?",Long.class,a.id())).isZero();
+    }
+
+    @Test void personalFavoriteIntegrationDoesNotMakeDiscoverySaveAnAnchor() {
+        var user=java.util.UUID.randomUUID();var anchor=java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",user,user.toString(),user+"@example.com","Anchor test");
+        jdbc.update("INSERT INTO iam.user_saved_places(id,user_id,label,name,lat,lng,is_default) VALUES(?,?,?,?,?,?,?)",anchor,user,"Home","Home",1.0,2.0,true);
+        var saved=library.states(user,java.util.List.of("coordinates:1.000000,2.000000")).getFirst();
+        assertThat(saved.saved()).isTrue();
+        library.remove(user,saved.id());
+        assertThat(jdbc.queryForObject("SELECT is_default FROM iam.user_saved_places WHERE id=?",Boolean.class,anchor)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL FROM iam.user_saved_places WHERE id=?",Boolean.class,anchor)).isTrue();
+        jdbc.update("UPDATE iam.user_saved_places SET lat=3 WHERE id=?",anchor);
+        assertThat(library.states(user,java.util.List.of("coordinates:3.000000,2.000000")).getFirst().saved()).isTrue();
+    }
+
+    @Test void planLimitCountsOnlyActiveAndRestoreCannotBypassIt() {
+        var user=java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",user,user.toString(),user+"@example.com","Quota test");
+        java.util.UUID first=null;
+        for(int i=0;i<50;i++) {
+            var row=library.save(user,new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"PLAN","plan:"+i,"Plan "+i,null,null,null,null,"Japan","Tokyo",null,"Owner",2,null,null,null,java.util.List.of()),null,50);
+            if(i==0)first=row.id();
+        }
+        var extra=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"PLAN","plan:extra","Extra",null,null,null,null,null,null,null,null,1,null,null,null,java.util.List.of());
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->library.save(user,extra,null,50))).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException.class);
+        var removed=first;library.remove(user,removed);library.save(user,extra,null,50);
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(()->library.restore(user,removed,50))).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException.class);
+        var q=new com.navio.usermanagementservice.library.LibraryContracts.Query("PLAN","","NEWEST",1,24,"Japan,France",null,null,null,null,null);
+        assertThat(library.list(user,q).total()).isEqualTo(49);assertThat(library.list(user,q).items()).hasSize(24);
+    }
+
+    @Test void favoriteSearchNormalizesAccentsAndProviderUpdatesMoveCanonicalLocation() {
+        var user=java.util.UUID.randomUUID();var id=java.util.UUID.randomUUID();
+        jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",user,user.toString(),user+"@example.com","Search test");
+        jdbc.update("INSERT INTO iam.user_saved_places(id,user_id,label,name,address,lat,lng,provider_place_id) VALUES(?,?,?,?,?,?,?,?)",id,user,"Café","Café", "A very long address with many words and distant city information to make document similarity low",1.0,2.0,"ChIJcafe");
+        var q=new com.navio.usermanagementservice.library.LibraryContracts.Query("PLACE","cafe","NEWEST",0,24,null,null,null,null,null,null);
+        assertThat(library.list(user,q).total()).isEqualTo(1);
+        jdbc.update("UPDATE iam.user_saved_places SET lat=4 WHERE id=?",id);
+        assertThat(library.list(user,q).items().getFirst().lat()).isEqualTo(4.0);
+    }
 
     @Autowired
     Flyway flyway;

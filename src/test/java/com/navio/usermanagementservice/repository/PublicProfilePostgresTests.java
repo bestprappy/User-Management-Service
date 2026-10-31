@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V12 against real PostgreSQL, in a throwaway database so the upgrade from V10
+ * V11 (public profile) against real PostgreSQL, in a throwaway database so the upgrade from V10
  * with existing rows can be replayed: the username backfill, the uniqueness and
  * format rules, the banner ownership key and the handle history.
  *

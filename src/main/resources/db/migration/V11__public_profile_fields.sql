@@ -6,9 +6,9 @@
 --  if a release rolls back while this schema stays in place. Profiles created by
 --  that older image get a username lazily from the application on next sign-in.
 --
---  NOTE: V11 (palette text color) is developed on a separate branch. It must be
---  released before or together with this migration; Flyway refuses a lower
---  version that appears after a higher one has been applied.
+--  NOTE: an unreleased palette branch also drafted a V11. It must renumber to
+--  the next free version; a duplicate version fails Flyway in tests and CI
+--  rather than reaching production out of order.
 -- =============================================================================
 
 ALTER TABLE iam.users ADD COLUMN IF NOT EXISTS username VARCHAR(30);

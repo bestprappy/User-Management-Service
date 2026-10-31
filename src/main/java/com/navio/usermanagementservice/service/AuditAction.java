@@ -17,6 +17,7 @@ public final class AuditAction {
     public static final String USER_PROVISIONED = "USER_PROVISIONED";
     public static final String USER_PROFILE_UPDATED = "USER_PROFILE_UPDATED";
     public static final String USER_PREFERENCES_UPDATED = "USER_PREFERENCES_UPDATED";
+    public static final String USER_SESSIONS_REVOKED = "USER_SESSIONS_REVOKED";
 
     public static final String USER_SUSPENDED = "USER_SUSPENDED";
     public static final String USER_REACTIVATED = "USER_REACTIVATED";

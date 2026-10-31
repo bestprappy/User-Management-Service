@@ -24,6 +24,14 @@ public record UserProfileResponse(
         List<NavioRole> roles,
         UserPreferences preferences,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        String username,
+        Instant usernameChangeAvailableAt,
+        UUID accountId,
+        String bio,
+        UUID bannerMediaId,
+        List<String> travelInterests,
+        String travelPace,
+        boolean showTravelPreferences
 ) {
 }

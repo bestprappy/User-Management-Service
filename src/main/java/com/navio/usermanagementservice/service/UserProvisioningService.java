@@ -38,6 +38,8 @@ import java.util.Set;
 public class UserProvisioningService {
 
     private static final String CLAIM_EMAIL = "email";
+    /** Placeholder owner id while a brand-new profile has no id yet. */
+    private static final java.util.UUID NEW_PROFILE = new java.util.UUID(0L, 0L);
     private static final String CLAIM_PREFERRED_USERNAME = "preferred_username";
     private static final String CLAIM_NAME = "name";
     private static final String CLAIM_GIVEN_NAME = "given_name";
@@ -53,6 +55,7 @@ public class UserProvisioningService {
     private final AuditService auditService;
     private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
+    private final UsernameService usernameService;
 
     /**
      * Resolves the caller, creating the profile if this is their first request.
@@ -111,6 +114,7 @@ public class UserProvisioningService {
                 .authSubject(authSubject)
                 .email(requireEmail(jwt))
                 .displayName(resolveDisplayName(jwt))
+                .username(usernameService.generateFor(resolveDisplayName(jwt), NEW_PROFILE))
                 .locale(claim(jwt, CLAIM_LOCALE).map(value -> truncate(value.trim(), MAX_LOCALE_LENGTH)).orElse(null))
                 .status(UserStatus.ACTIVE)
                 .preferences(toMap(UserPreferences.defaults()))
@@ -133,11 +137,14 @@ public class UserProvisioningService {
     }
 
     /**
-     * Keeps the mirrored profile aligned with Keycloak.
+     * Keeps the mirrored email aligned with Keycloak, and gives a profile
+     * written by an older release its first username.
      *
-     * <p>Only email and display name are synchronised, and only when Keycloak
-     * actually differs — an unconditional write would bump {@code updated_at} on
-     * every request and generate needless database load.
+     * <p>The display name is taken from Keycloak only when the profile is first
+     * provisioned. After that Navio owns it: the user edits it on the profile
+     * page, and copying the token's name back on every request would silently
+     * revert that edit. Writes happen only when something actually differs, so
+     * an ordinary request does not bump {@code updated_at}.
      */
     private User syncFromToken(User user, Jwt jwt) {
         boolean changed = false;
@@ -150,9 +157,7 @@ public class UserProvisioningService {
             changed = true;
         }
 
-        String tokenDisplayName = resolveDisplayNameOrNull(jwt);
-        if (tokenDisplayName != null && !tokenDisplayName.equals(user.getDisplayName())) {
-            user.setDisplayName(tokenDisplayName);
+        if (!user.isDeleted() && usernameService.ensureAssigned(user)) {
             changed = true;
         }
 

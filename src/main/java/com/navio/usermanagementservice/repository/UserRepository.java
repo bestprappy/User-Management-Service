@@ -44,6 +44,26 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findByIdAndDeletedAtIsNull(UUID id);
 
+    /** Handles are stored lowercase; callers pass a normalized value. */
+    Optional<User> findByUsername(String username);
+
+    boolean existsByUsername(String username);
+
+    /**
+     * People search over public fields only: a handle prefix or a display-name
+     * substring. Both terms arrive with LIKE wildcards already escaped by '!'.
+     * Closed accounts and profiles without a handle are never returned.
+     */
+    @Query("""
+            SELECT u FROM User u
+            WHERE u.deletedAt IS NULL AND u.username IS NOT NULL
+              AND (u.username LIKE concat(:handle, '%') ESCAPE '!'
+                   OR lower(u.displayName) LIKE lower(concat('%', :name, '%')) ESCAPE '!')
+            ORDER BY CASE WHEN u.username = :exact THEN 0 ELSE 1 END, u.username
+            """)
+    Page<User> searchPublicProfiles(@Param("handle") String handle, @Param("name") String name,
+                                    @Param("exact") String exact, Pageable pageable);
+
     /**
      * Admin user search.
      *

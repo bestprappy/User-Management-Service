@@ -16,8 +16,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Entity-to-DTO mapping.
@@ -48,18 +50,56 @@ public class UserMapper {
                 roles,
                 toPreferences(user.getPreferences()),
                 user.getCreatedAt(),
-                user.getUpdatedAt()
+                user.getUpdatedAt(),
+                user.getUsername(),
+                nextUsernameChange(user),
+                parseSubject(user.getAuthSubject()),
+                user.getBio(),
+                user.getBannerMediaId(),
+                interestsOf(user),
+                user.getTravelPace(),
+                !Boolean.FALSE.equals(user.getShowTravelPreferences())
         );
     }
 
-    /** Reduced profile, safe to show to other users. */
+    /**
+     * Reduced profile, safe to show to other users. Travel preferences are left
+     * out entirely when the owner hid them.
+     */
     public PublicUserProfileResponse toPublicProfile(User user) {
+        boolean showPreferences = !Boolean.FALSE.equals(user.getShowTravelPreferences());
         return new PublicUserProfileResponse(
                 user.getId(),
                 user.getDisplayName(),
                 user.getAvatarMediaId(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getUsername(),
+                parseSubject(user.getAuthSubject()),
+                user.getBio(),
+                user.getBannerMediaId(),
+                showPreferences ? interestsOf(user) : List.of(),
+                showPreferences ? user.getTravelPace() : null
         );
+    }
+
+    private static List<String> interestsOf(User user) {
+        return user.getTravelInterests() == null ? List.of() : List.copyOf(user.getTravelInterests());
+    }
+
+    private static Instant nextUsernameChange(User user) {
+        Instant last = user.getUsernameChangedAt();
+        if (last == null) return null;
+        Instant next = last.plus(UsernamePolicy.CHANGE_COOLDOWN);
+        return next.isAfter(Instant.now()) ? next : null;
+    }
+
+    /** Keycloak subjects are UUIDs in this realm; anything else is not exposed. */
+    private static UUID parseSubject(String subject) {
+        try {
+            return subject == null ? null : UUID.fromString(subject);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     public VehicleResponse toVehicle(UserVehicle vehicle) {

@@ -55,7 +55,7 @@ class UserPictureServiceTests {
     }
 
     @Test void arbitraryMediaIdsCannotBeAssignedThroughProfilePatch() {
-        var profiles = new UserProfileService(users,mapper,audit,mock(OutboxService.class));
+        var profiles = new UserProfileService(users,mapper,audit,mock(OutboxService.class),mock(UsernameService.class),mock(com.navio.usermanagementservice.repository.UsernameHistoryRepository.class));
         assertThatThrownBy(() -> profiles.updateMyProfile(caller,new UpdateProfileRequest(null,UUID.randomUUID(),null,null)))
                 .isInstanceOf(BusinessRuleException.class);
         verifyNoInteractions(users,pictures,audit);

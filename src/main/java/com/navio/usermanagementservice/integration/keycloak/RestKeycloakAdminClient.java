@@ -32,7 +32,7 @@ import java.util.Optional;
  */
 @Component
 @Slf4j
-public class RestKeycloakAdminClient implements KeycloakAdminClient {
+public class RestKeycloakAdminClient implements KeycloakAdminClient, KeycloakAccountReader {
 
     private final KeycloakProperties.Admin adminProperties;
     private final KeycloakAdminTokenProvider tokenProvider;
@@ -201,6 +201,38 @@ public class RestKeycloakAdminClient implements KeycloakAdminClient {
             throw translate("resolve realm role", exception);
         } catch (RestClientException exception) {
             throw translate("resolve realm role", exception);
+        }
+    }
+
+    @Override
+    public List<String> credentialTypes(String authSubject) {
+        try {
+            KeycloakRepresentations.CredentialSummary[] credentials = withAuthRetry(token -> restClient.get()
+                    .uri("/users/{id}/credentials", authSubject)
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .retrieve()
+                    .body(KeycloakRepresentations.CredentialSummary[].class));
+            return credentials == null ? List.of() : Arrays.stream(credentials)
+                    .map(KeycloakRepresentations.CredentialSummary::type)
+                    .filter(java.util.Objects::nonNull).distinct().toList();
+        } catch (RestClientException exception) {
+            throw translate("read credential types", exception);
+        }
+    }
+
+    @Override
+    public List<String> linkedIdentityProviders(String authSubject) {
+        try {
+            KeycloakRepresentations.FederatedIdentity[] identities = withAuthRetry(token -> restClient.get()
+                    .uri("/users/{id}/federated-identity", authSubject)
+                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                    .retrieve()
+                    .body(KeycloakRepresentations.FederatedIdentity[].class));
+            return identities == null ? List.of() : Arrays.stream(identities)
+                    .map(KeycloakRepresentations.FederatedIdentity::identityProvider)
+                    .filter(java.util.Objects::nonNull).distinct().toList();
+        } catch (RestClientException exception) {
+            throw translate("read linked identity providers", exception);
         }
     }
 

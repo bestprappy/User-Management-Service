@@ -31,6 +31,19 @@ public final class KeycloakRepresentations {
     ) {
     }
 
+    /**
+     * A credential's type only. The representation also carries secret data and
+     * credential ids; binding just {@code type} keeps those out of memory.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CredentialSummary(String type) {
+    }
+
+    /** A linked external identity; only the provider alias is read. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record FederatedIdentity(String identityProvider) {
+    }
+
     /** Patch body for enabling or disabling an account. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record EnabledUpdate(Boolean enabled) {

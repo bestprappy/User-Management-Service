@@ -18,7 +18,9 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -53,6 +55,32 @@ public class User {
 
     @Column(name = "avatar_media_id")
     private UUID avatarMediaId;
+
+    /** Public, unique, lowercase handle. Null only for rows written by an older image. */
+    @Column(length = 30)
+    private String username;
+
+    @Column(name = "username_changed_at")
+    private Instant usernameChangedAt;
+
+    @Column(length = 280)
+    private String bio;
+
+    @Builder.Default
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "travel_interests", nullable = false)
+    private List<String> travelInterests = new ArrayList<>();
+
+    @Column(name = "travel_pace", length = 20)
+    private String travelPace;
+
+    /** Whether interests and pace appear on the public profile. */
+    @Builder.Default
+    @Column(name = "show_travel_preferences", nullable = false)
+    private Boolean showTravelPreferences = Boolean.TRUE;
+
+    @Column(name = "banner_media_id")
+    private UUID bannerMediaId;
 
     @Builder.Default
     @Convert(converter = UserStatusConverter.class)
@@ -98,6 +126,12 @@ public class User {
         }
         if (preferences == null) {
             preferences = new HashMap<>();
+        }
+        if (travelInterests == null) {
+            travelInterests = new ArrayList<>();
+        }
+        if (showTravelPreferences == null) {
+            showTravelPreferences = Boolean.TRUE;
         }
     }
 

@@ -81,6 +81,24 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "A picture file is required", null);
     }
 
+    // --- Public profile ------------------------------------------------------
+
+    @ExceptionHandler(UserManagementExceptions.UsernameTakenException.class)
+    public ResponseEntity<ErrorResponse> handleUsernameTaken(RuntimeException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), "Choose a different username");
+    }
+
+    @ExceptionHandler(UserManagementExceptions.UserGoneException.class)
+    public ResponseEntity<ErrorResponse> handleUserGone(RuntimeException ex) {
+        return build(HttpStatus.GONE, ex.getMessage(), null);
+    }
+
+    /** {@code error} is a stable code the client uses to start a fresh sign-in. */
+    @ExceptionHandler(UserManagementExceptions.ReauthenticationRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleReauthentication(RuntimeException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), "reauthentication_required");
+    }
+
     // --- Not found -----------------------------------------------------------
 
     @ExceptionHandler(UserNotFoundException.class)

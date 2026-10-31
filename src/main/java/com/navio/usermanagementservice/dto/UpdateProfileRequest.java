@@ -4,18 +4,20 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
  * Editable fields on the caller's own profile.
  *
- * <p>Only these four fields exist on the request type. {@code email},
- * {@code status}, {@code roles}, {@code authSubject}, and {@code id} are absent
- * so that binding cannot reach them: a mass-assignment attempt like
- * {@code {"status":"active","roles":["ADMIN"]}} has nowhere to land. Email and
- * roles are Keycloak's to change, and status is moderation's.
+ * <p>{@code email}, {@code status}, {@code roles}, {@code authSubject} and
+ * {@code id} are absent so that binding cannot reach them: a mass-assignment
+ * attempt like {@code {"status":"active","roles":["ADMIN"]}} has nowhere to land
+ * and those keys are dropped at binding. Email and roles are Keycloak's to
+ * change, and status is moderation's.
  *
- * <p>Null means "leave unchanged".
+ * <p>Null means "leave unchanged". For {@code bio} and {@code travelPace} an
+ * empty string clears the value.
  */
 @JsonIgnoreProperties(ignoreUnknown = false)
 public record UpdateProfileRequest(
@@ -32,6 +34,24 @@ public record UpdateProfileRequest(
         String locale,
 
         @Pattern(regexp = "^[A-Za-z]{2}$", message = "countryCode must be a 2-letter ISO code")
-        String countryCode
+        String countryCode,
+
+        @Size(max = 31, message = "username must be at most 30 characters")
+        String username,
+
+        @Size(max = 280, message = "bio must be at most 280 characters")
+        String bio,
+
+        @Size(max = TravelProfile.MAX_INTERESTS, message = "Choose at most 8 travel interests")
+        List<@Size(max = 40) String> travelInterests,
+
+        @Pattern(regexp = "^(|relaxed|balanced|packed)$", message = "travelPace must be relaxed, balanced or packed")
+        String travelPace,
+
+        Boolean showTravelPreferences
 ) {
+    /** The original four-field form, used by existing callers and tests. */
+    public UpdateProfileRequest(String displayName, UUID avatarMediaId, String locale, String countryCode) {
+        this(displayName, avatarMediaId, locale, countryCode, null, null, null, null, null);
+    }
 }

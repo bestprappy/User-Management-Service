@@ -75,6 +75,21 @@ public final class UserManagementExceptions {
         }
     }
 
+    /** Another account holds, or recently released, the requested username. */
+    public static class UsernameTakenException extends RuntimeException {
+        public UsernameTakenException() { super("This username is taken"); }
+    }
+
+    /** The profile existed but its account was closed. */
+    public static class UserGoneException extends RuntimeException {
+        public UserGoneException() { super("This account was deleted"); }
+    }
+
+    /** A sensitive action needs a sign-in more recent than the current session's. */
+    public static class ReauthenticationRequiredException extends RuntimeException {
+        public ReauthenticationRequiredException() { super("Sign in again to confirm this change"); }
+    }
+
     /** The caller's account is currently suspended. */
     public static class AccountSuspendedException extends RuntimeException {
         public AccountSuspendedException(String reason) {

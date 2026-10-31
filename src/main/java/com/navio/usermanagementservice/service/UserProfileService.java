@@ -1,18 +1,24 @@
 package com.navio.usermanagementservice.service;
 
 import com.navio.usermanagementservice.dto.PublicUserProfileResponse;
+import com.navio.usermanagementservice.dto.TravelProfile;
 import com.navio.usermanagementservice.dto.UpdateProfileRequest;
+import com.navio.usermanagementservice.dto.UsernameAvailabilityResponse;
 import com.navio.usermanagementservice.dto.UserPreferences;
 import com.navio.usermanagementservice.dto.UserProfileResponse;
+import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
+import com.navio.usermanagementservice.exception.UserManagementExceptions.UserGoneException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.UserNotFoundException;
 import com.navio.usermanagementservice.model.User;
 import com.navio.usermanagementservice.repository.UserRepository;
+import com.navio.usermanagementservice.repository.UsernameHistoryRepository;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import com.navio.usermanagementservice.security.NavioRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +42,8 @@ public class UserProfileService {
     private final UserMapper userMapper;
     private final AuditService auditService;
     private final OutboxService outboxService;
+    private final UsernameService usernameService;
+    private final UsernameHistoryRepository usernameHistory;
 
     /** The caller's own profile, including email and status. */
     public UserProfileResponse getMyProfile(AuthenticatedUser caller) {
@@ -59,6 +67,52 @@ public class UserProfileService {
         var user = userRepository.findByAuthSubject(subject.toString())
                 .filter(profile -> profile.getDeletedAt() == null)
                 .orElseThrow(() -> new UserNotFoundException(subject));
+        return userMapper.toPublicProfile(user);
+    }
+
+    /**
+     * A public profile by handle. A handle the owner has since changed still
+     * resolves (the response carries the current one, so the client redirects).
+     * A closed account answers 410 so the page can say so instead of "not found".
+     */
+    public PublicUserProfileResponse getPublicProfileByUsername(String rawUsername) {
+        String username = UsernamePolicy.normalize(rawUsername);
+        var current = userRepository.findByUsername(username);
+        if (current.isPresent()) return publicOrGone(current.get());
+        return usernameHistory.mostRecentOwner(username)
+                .flatMap(userRepository::findById)
+                .map(this::publicOrGone)
+                .orElseThrow(() -> new UserNotFoundException("No user with that username"));
+    }
+
+    /** Most results one people-search page may return. */
+    public static final int MAX_SEARCH_PAGE = 50;
+
+    /**
+     * Finds people by handle prefix or display name. Only public profile fields
+     * are matched and returned; email is never searched.
+     */
+    public org.springframework.data.domain.Page<PublicUserProfileResponse> searchPeople(String query, int page, int size) {
+        String term = query == null ? "" : query.strip();
+        if (term.startsWith("@")) term = term.substring(1);
+        if (term.length() < 2 || term.length() > 60) {
+            throw new BusinessRuleException("Search for 2 to 60 characters");
+        }
+        if (page < 0 || size < 1 || size > MAX_SEARCH_PAGE) {
+            throw new BusinessRuleException("Page must be nonnegative and size between 1 and 50");
+        }
+        String escaped = term.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+        return userRepository.searchPublicProfiles(escaped.toLowerCase(Locale.ROOT), escaped,
+                        term.toLowerCase(Locale.ROOT), org.springframework.data.domain.PageRequest.of(page, size))
+                .map(userMapper::toPublicProfile);
+    }
+
+    public UsernameAvailabilityResponse checkUsername(AuthenticatedUser caller, String candidate) {
+        return usernameService.availability(candidate, requireUser(caller.id()));
+    }
+
+    private PublicUserProfileResponse publicOrGone(User user) {
+        if (user.isDeleted()) throw new UserGoneException();
         return userMapper.toPublicProfile(user);
     }
 
@@ -87,6 +141,29 @@ public class UserProfileService {
             user.setCountryCode(request.countryCode().toUpperCase(Locale.ROOT));
             changed = true;
         }
+        if (request.username() != null && usernameService.change(user, request.username())) {
+            changed = true;
+        }
+        if (request.bio() != null) {
+            String bio = request.bio().strip();
+            user.setBio(bio.isEmpty() ? null : bio);
+            changed = true;
+        }
+        if (request.travelInterests() != null) {
+            List<String> unknown = request.travelInterests().stream()
+                    .filter(value -> !TravelProfile.INTERESTS.contains(value)).toList();
+            if (!unknown.isEmpty()) throw new BusinessRuleException("Unknown travel interest: " + unknown.getFirst());
+            user.setTravelInterests(new ArrayList<>(TravelProfile.sanitizeInterests(request.travelInterests())));
+            changed = true;
+        }
+        if (request.travelPace() != null) {
+            user.setTravelPace(request.travelPace().isEmpty() ? null : request.travelPace());
+            changed = true;
+        }
+        if (request.showTravelPreferences() != null) {
+            user.setShowTravelPreferences(request.showTravelPreferences());
+            changed = true;
+        }
 
         if (!changed) {
             return userMapper.toProfile(user, rolesOf(caller));
@@ -97,7 +174,8 @@ public class UserProfileService {
                 AuditAction.RESOURCE_USER, saved.getId(),
                 before, profileSnapshot(saved), Map.of());
         outboxService.publish(saved.getId(), OutboxService.EVENT_USER_PROFILE_UPDATED,
-                Map.of("userId", saved.getId().toString(), "displayName", saved.getDisplayName()));
+                Map.of("userId", saved.getId().toString(), "displayName", saved.getDisplayName(),
+                        "username", String.valueOf(saved.getUsername())));
 
         return userMapper.toProfile(saved, rolesOf(caller));
     }
@@ -145,6 +223,11 @@ public class UserProfileService {
                 ? null : user.getAvatarMediaId().toString());
         snapshot.put("locale", user.getLocale());
         snapshot.put("countryCode", user.getCountryCode());
+        snapshot.put("username", user.getUsername());
+        snapshot.put("bio", user.getBio());
+        snapshot.put("travelInterests", user.getTravelInterests() == null ? List.of() : List.copyOf(user.getTravelInterests()));
+        snapshot.put("travelPace", user.getTravelPace());
+        snapshot.put("showTravelPreferences", user.getShowTravelPreferences());
         return snapshot;
     }
 }

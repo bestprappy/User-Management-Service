@@ -2,6 +2,7 @@ package com.navio.usermanagementservice.repository;
 
 import com.navio.usermanagementservice.config.JacksonConfiguration;
 import com.navio.usermanagementservice.dto.PaletteColorDtos.CreateRequest;
+import com.navio.usermanagementservice.dto.PaletteColorDtos.UpdateTextColorRequest;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import com.navio.usermanagementservice.security.NavioRole;
@@ -18,7 +19,7 @@ import java.util.List;
 import java.util.Set;
 import static org.assertj.core.api.Assertions.*;
 
-/** Runs V9 and the palette service against real Postgres with {@code ddl-auto=validate}. */
+/** Runs V9, V12 and the palette service against real Postgres with {@code ddl-auto=validate}. */
 @DataJpaTest(properties = {
     "spring.datasource.url=${NAVIO_TEST_DB_URL}", "spring.datasource.username=${NAVIO_TEST_DB_USERNAME:tripplanner}",
     "spring.datasource.password=${NAVIO_TEST_DB_PASSWORD:tripplanner}", "spring.datasource.driver-class-name=org.postgresql.Driver",
@@ -52,6 +53,29 @@ class PaletteColorPostgresTests {
         assertThat(service.restore(admin, "sunset-orange").retired()).isFalse();
         assertThat(audits.findAll()).extracting(a -> a.getAction())
                 .contains("PALETTE_COLOR_CREATED", "PALETTE_COLOR_RETIRED", "PALETTE_COLOR_RESTORED");
+    }
+
+    @Test void theSeededColorsKeepTheWhiteLabelsTheyAlwaysHadAndNewOnesStartAutomatic() {
+        assertThat(service.all()).filteredOn(c -> c.id().equals("amber")).singleElement()
+                .satisfies(amber -> assertThat(amber.textOnLight() + "/" + amber.textOnDark()).isEqualTo("white/white"));
+        var created = service.create(admin, new CreateRequest("Lagoon", "#0e7c86"));
+        assertThat(created.textOnLight() + "/" + created.textOnDark()).isEqualTo("auto/auto");
+        var updated = service.updateTextColor(admin, "lagoon", new UpdateTextColorRequest("black", "white"));
+        assertThat(updated.textOnLight() + "/" + updated.textOnDark()).isEqualTo("black/white");
+    }
+
+    @Test void aDeletedColorLeavesThePaletteKeepsItsIdReservedAndStaysUsableInGuides() {
+        service.create(admin, new CreateRequest("Red", "#d92d20"));
+        service.retire(admin, "red");
+        service.delete(admin, "red");
+        assertThat(service.adminList(admin)).extracting(c -> c.id()).doesNotContain("red");
+        assertThat(service.all()).filteredOn(c -> c.id().equals("red")).singleElement().satisfies(red -> {
+            assertThat(red.deleted()).isTrue();
+            assertThat(red.hex()).isEqualTo("#00ae84");
+        });
+        assertThatCode(() -> service.requireKnown(List.of("teal", "red"))).doesNotThrowAnyException();
+        assertThat(service.create(admin, new CreateRequest("Red", "#d92d20")).id()).isEqualTo("red-2");
+        assertThat(audits.findAll()).extracting(a -> a.getAction()).contains("PALETTE_COLOR_DELETED");
     }
 
     @Test void guidesMayUseRetiredColorsButNotUnknownOnes() {

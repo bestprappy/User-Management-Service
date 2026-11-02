@@ -10,9 +10,10 @@ import java.util.UUID;
 /**
  * One color in the admin-managed palette.
  *
- * <p>The hex never changes after creation and rows are never deleted: trips and
- * guides store only the id, so retiring a color hides it from pickers while
- * every saved reference keeps rendering the same color.
+ * <p>The hex never changes after creation: trips and guides store only the id,
+ * so retiring a color hides it from pickers while every saved reference keeps
+ * rendering the same color. Deleting a retired color moves its id to
+ * {@link DeletedPaletteColor}, and saved references fall back to the default.
  */
 @Entity
 @Table(name = "palette_colors", schema = "iam")
@@ -22,6 +23,9 @@ public class PaletteColor {
     @Column(nullable = false, length = 40) private String name;
     @Column(nullable = false, length = 7, updatable = false) private String hex;
     @Column(nullable = false) private Integer sortOrder;
+    /** Label color on this color in the light theme: {@code auto}, {@code white} or {@code black}. */
+    @Column(nullable = false, length = 5) private String textOnLight = "auto";
+    @Column(nullable = false, length = 5) private String textOnDark = "auto";
     private Instant retiredAt;
     private UUID createdBy;
     private UUID updatedBy;

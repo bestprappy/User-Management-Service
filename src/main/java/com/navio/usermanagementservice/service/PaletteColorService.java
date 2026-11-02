@@ -5,7 +5,9 @@ import com.navio.usermanagementservice.exception.UserManagementExceptions.Busine
 import com.navio.usermanagementservice.exception.UserManagementExceptions.ForbiddenOperationException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.PaletteColorConflictException;
 import com.navio.usermanagementservice.exception.UserManagementExceptions.PaletteColorNotFoundException;
+import com.navio.usermanagementservice.model.DeletedPaletteColor;
 import com.navio.usermanagementservice.model.PaletteColor;
+import com.navio.usermanagementservice.repository.DeletedPaletteColorRepository;
 import com.navio.usermanagementservice.repository.PaletteColorRepository;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import lombok.RequiredArgsConstructor;
@@ -19,9 +21,11 @@ import java.util.*;
 /**
  * The admin-managed palette used by trip sections and guide categories.
  *
- * <p>Administrators add and retire colors. Nothing is ever deleted and a hex
- * never changes, because trips, guides and frozen shared-plan snapshots store
- * only the id.
+ * <p>Administrators add, retire and restore colors, and choose the label color
+ * drawn on each. A hex never changes, because trips, guides and frozen
+ * shared-plan snapshots store only the id. A retired color can be deleted
+ * permanently: its id is reserved and every saved reference falls back to
+ * {@link #DEFAULT_COLOR_ID}.
  */
 @Service @RequiredArgsConstructor @Transactional(readOnly = true)
 public class PaletteColorService {
@@ -34,14 +38,26 @@ public class PaletteColorService {
     static final double MIN_SURFACE_CONTRAST = 1.5;
     private static final String LIGHT_SURFACE = "#ffffff";
     private static final String DARK_SURFACE = "#1b1d24";
+    /** The color readers draw for a deleted id; the client falls back to the same one. It cannot be deleted. */
+    static final String DEFAULT_COLOR_ID = "teal";
+    private static final String DEFAULT_COLOR_HEX = "#00ae84";
+    private static final String AUTO = "auto";
 
     private final PaletteColorRepository repository;
+    private final DeletedPaletteColorRepository deletedRepository;
     private final AuditService audit;
 
     public List<PublicResponse> all() {
-        return repository.findAllByOrderBySortOrderAscIdAsc().stream()
-                .map(color -> new PublicResponse(color.getId(), color.getName(), color.getHex(), color.isRetired()))
-                .toList();
+        List<PaletteColor> colors = repository.findAllByOrderBySortOrderAscIdAsc();
+        String defaultHex = colors.stream().filter(color -> color.getId().equals(DEFAULT_COLOR_ID))
+                .map(PaletteColor::getHex).findFirst().orElse(DEFAULT_COLOR_HEX);
+        List<PublicResponse> response = new ArrayList<>(colors.stream()
+                .map(color -> new PublicResponse(color.getId(), color.getName(), color.getHex(), color.isRetired(), false,
+                        color.getTextOnLight(), color.getTextOnDark()))
+                .toList());
+        deletedRepository.findAllByOrderByIdAsc().forEach(deleted -> response.add(
+                new PublicResponse(deleted.getId(), "Deleted color", defaultHex, true, true, AUTO, AUTO)));
+        return response;
     }
 
     public List<AdminResponse> adminList(AuthenticatedUser caller) {
@@ -70,6 +86,8 @@ public class PaletteColorService {
         color.setName(name);
         color.setHex(hex);
         color.setSortOrder(repository.maxSortOrder() + 10);
+        color.setTextOnLight(request.textOnLight() == null ? AUTO : request.textOnLight());
+        color.setTextOnDark(request.textOnDark() == null ? AUTO : request.textOnDark());
         color.setCreatedBy(caller.id());
         return save(caller, color, "PALETTE_COLOR_CREATED", null);
     }
@@ -98,14 +116,55 @@ public class PaletteColorService {
         return save(caller, color, "PALETTE_COLOR_RESTORED", before);
     }
 
+    @Transactional
+    public AdminResponse updateTextColor(AuthenticatedUser caller, String id, UpdateTextColorRequest request) {
+        requireAdmin(caller);
+        PaletteColor color = require(id);
+        if (color.getTextOnLight().equals(request.textOnLight()) && color.getTextOnDark().equals(request.textOnDark())) {
+            return adminResponse(color);
+        }
+        Map<String, Object> before = snapshot(color);
+        color.setTextOnLight(request.textOnLight());
+        color.setTextOnDark(request.textOnDark());
+        return save(caller, color, "PALETTE_COLOR_TEXT_CHANGED", before);
+    }
+
     /**
-     * Rejects ids that were never in the palette. Retired colors are accepted:
-     * a document saved before its color was retired must stay editable.
+     * Deletes a retired color for good. Its id is reserved so no new color takes
+     * it over, and everything saved with it renders the default color instead.
+     */
+    @Transactional
+    public void delete(AuthenticatedUser caller, String id) {
+        requireAdmin(caller);
+        PaletteColor color = require(id);
+        if (DEFAULT_COLOR_ID.equals(color.getId())) {
+            throw new BusinessRuleException(color.getName() + " replaces deleted colors, so it cannot be deleted");
+        }
+        if (!color.isRetired()) throw new BusinessRuleException("Remove this color from the palette before deleting it");
+        DeletedPaletteColor deleted = new DeletedPaletteColor();
+        deleted.setId(color.getId());
+        deleted.setName(color.getName());
+        deleted.setHex(color.getHex());
+        deleted.setDeletedBy(caller.id());
+        deleted.setDeletedAt(Instant.now());
+        Map<String, Object> before = snapshot(color);
+        repository.delete(color);
+        repository.flush();
+        deletedRepository.saveAndFlush(deleted);
+        audit.record(caller.id(), "PALETTE_COLOR_DELETED", RESOURCE_TYPE, resourceId(color.getId()),
+                before, null, Map.of("colorId", color.getId()));
+    }
+
+    /**
+     * Rejects ids that were never in the palette. Retired and deleted colors are
+     * accepted: a document saved with one must stay editable, and readers draw
+     * a deleted id in the default color.
      */
     public void requireKnown(Collection<String> ids) {
         Set<String> wanted = new HashSet<>(ids);
         if (wanted.isEmpty()) return;
-        if (repository.findAllById(wanted).size() != wanted.size()) {
+        int known = repository.findAllById(wanted).size();
+        if (known != wanted.size() && known + deletedRepository.findAllById(wanted).size() != wanted.size()) {
             throw new BusinessRuleException("A category uses a color that is not in the palette");
         }
     }
@@ -114,19 +173,22 @@ public class PaletteColorService {
         color.setUpdatedBy(caller.id());
         color.setUpdatedAt(Instant.now());
         repository.saveAndFlush(color);
-        audit.record(caller.id(), action, RESOURCE_TYPE,
-                UUID.nameUUIDFromBytes(("palette-color:" + color.getId()).getBytes(StandardCharsets.UTF_8)),
+        audit.record(caller.id(), action, RESOURCE_TYPE, resourceId(color.getId()),
                 before, snapshot(color), Map.of("colorId", color.getId()));
         return adminResponse(color);
     }
 
-    /** A readable id from the name: "Sunset Orange" -> sunset-orange, then sunset-orange-2 if taken. */
+    private static UUID resourceId(String colorId) {
+        return UUID.nameUUIDFromBytes(("palette-color:" + colorId).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A readable id from the name: "Sunset Orange" -> sunset-orange, then sunset-orange-2 if taken or deleted. */
     String uniqueId(String name) {
         String base = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
         if (base.isEmpty() || !Character.isLetter(base.charAt(0))) base = base.isEmpty() ? "color" : "color-" + base;
         if (base.length() > 32) base = base.substring(0, 32).replaceAll("-+$", "");
         String id = base;
-        for (int suffix = 2; repository.existsById(id); suffix++) id = base + "-" + suffix;
+        for (int suffix = 2; repository.existsById(id) || deletedRepository.existsById(id); suffix++) id = base + "-" + suffix;
         return id;
     }
 
@@ -143,13 +205,15 @@ public class PaletteColorService {
         state.put("name", color.getName());
         state.put("hex", color.getHex());
         state.put("retired", color.isRetired());
+        state.put("textOnLight", color.getTextOnLight());
+        state.put("textOnDark", color.getTextOnDark());
         return state;
     }
 
     static AdminResponse adminResponse(PaletteColor color) {
         return new AdminResponse(color.getId(), color.getName(), color.getHex(),
                 color.getSortOrder() == null ? 0 : color.getSortOrder(), color.isRetired(),
-                color.getRetiredAt(), color.getCreatedAt(), color.getUpdatedAt());
+                color.getRetiredAt(), color.getCreatedAt(), color.getUpdatedAt(), color.getTextOnLight(), color.getTextOnDark());
     }
 
     /** WCAG contrast ratio between two #rrggbb colors. */

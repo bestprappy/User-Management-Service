@@ -3,6 +3,7 @@ package com.navio.usermanagementservice.controller;
 import com.navio.usermanagementservice.dto.PaletteColorDtos;
 import com.navio.usermanagementservice.dto.PaletteColorDtos.AdminResponse;
 import com.navio.usermanagementservice.dto.PaletteColorDtos.CreateRequest;
+import com.navio.usermanagementservice.dto.PaletteColorDtos.UpdateTextColorRequest;
 import com.navio.usermanagementservice.security.AuthenticatedUser;
 import com.navio.usermanagementservice.security.CurrentUser;
 import com.navio.usermanagementservice.service.PaletteColorService;
@@ -16,7 +17,10 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
-/** Administrators add colors and retire or restore them. There is no delete and no hex edit. */
+/**
+ * Administrators add colors, set their label color, retire or restore them, and
+ * delete retired ones for good. There is no name or hex edit.
+ */
 @RestController @RequestMapping("/v1/admin/palette-colors")
 @RequiredArgsConstructor @Validated @PreAuthorize("hasAnyRole('ADMIN', 'OWNER')")
 public class AdminPaletteColorController {
@@ -30,6 +34,19 @@ public class AdminPaletteColorController {
     @PostMapping
     public ResponseEntity<AdminResponse> create(@CurrentUser AuthenticatedUser caller, @Valid @RequestBody CreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(caller, request));
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<AdminResponse> updateTextColor(@CurrentUser AuthenticatedUser caller,
+            @PathVariable @Pattern(regexp = PaletteColorDtos.ID) String id, @Valid @RequestBody UpdateTextColorRequest request) {
+        return ResponseEntity.ok(service.updateTextColor(caller, id, request));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@CurrentUser AuthenticatedUser caller,
+            @PathVariable @Pattern(regexp = PaletteColorDtos.ID) String id) {
+        service.delete(caller, id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/retire")

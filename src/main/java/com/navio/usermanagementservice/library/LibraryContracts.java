@@ -12,6 +12,7 @@ public final class LibraryContracts {
         @NotNull @DecimalMin("-180") @DecimalMax("180") Double lng,
         @Size(max=120) String country,@Size(max=120) String city,@Size(max=120) String category,
         @Size(max=255) String sourceToken) {}
+    public record GuideRequest(@NotNull UUID id,@NotBlank @Pattern(regexp="TRAVELER|CURATED") String source) {}
     public record PlanRequest(@NotBlank @Size(max=255) String token) {}
     public record PlanReference(String token,String title,String authorName,String destinationCity,String destinationCountry,int dayCount,String startDate) {}
     public record Source(String token,String title) {}
@@ -19,8 +20,12 @@ public final class LibraryContracts {
         Double lat,Double lng,String country,String city,String category,String authorName,Integer dayCount,
         Instant savedAt,Instant openedAt,Instant deletedAt,List<Source> sources) {}
     public record Query(String tab,String search,String sort,int page,int size,String country,String city,
-        String source,String category,Instant savedAfter,Instant openedAfter) {}
-    public record Results(List<Item> items,long total,int page,int size,long plans,long places) {}
+        String source,String category,Instant savedAfter,Instant openedAfter,boolean includeGuides) {
+        public Query(String tab,String search,String sort,int page,int size,String country,String city,String source,String category,Instant savedAfter,Instant openedAfter){this(tab,search,sort,page,size,country,city,source,category,savedAfter,openedAfter,false);}
+    }
+    public record Results(List<Item> items,long total,int page,int size,long plans,long places,long guides) {
+        public Results(List<Item> items,long total,int page,int size,long plans,long places){this(items,total,page,size,plans,places,0);}
+    }
     public record StateRequest(@NotNull @Size(max=48) List<@NotBlank @Size(max=600) String> identities) {}
     public record State(String identity,UUID id,boolean saved,List<Source> sources) {}
 }

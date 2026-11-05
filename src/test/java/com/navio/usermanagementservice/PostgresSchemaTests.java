@@ -139,4 +139,31 @@ class PostgresSchemaTests {
     void migrationsApplyAndEntityMappingsMatchThePostgresSchema() {
         assertThat(flyway.info().pending()).isEmpty();
     }
+
+    @Test void guideStorageOptInQuotaOwnershipTrashAndPaging() {
+        var user=java.util.UUID.randomUUID();var other=java.util.UUID.randomUUID();
+        for(var id:java.util.List.of(user,other))jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",id,id.toString(),id+"@example.com","Guide test");
+        var guide=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"GUIDE","guide:traveler:"+java.util.UUID.randomUUID(),"Kyoto gardens",null,"ChIJcover",null,null,"Japan","Kyoto","TRAVELER","Author",null,null,null,null,java.util.List.of());
+        var first=library.save(user,guide,null,50);var duplicate=library.save(user,guide,null,50);
+        assertThat(duplicate.id()).isEqualTo(first.id());
+        var legacy=new com.navio.usermanagementservice.library.LibraryContracts.Query("ALL","","NEWEST",0,24,null,null,null,null,null,null);
+        assertThat(library.list(user,legacy).items()).isEmpty();
+        var current=new com.navio.usermanagementservice.library.LibraryContracts.Query("ALL","gardens","NEWEST",0,24,null,null,null,null,null,null,true);
+        assertThat(library.list(user,current).items()).extracting(i->i.type()).containsExactly("GUIDE");
+        assertThat(library.list(user,current).guides()).isEqualTo(1);
+        assertThat(library.list(other,current).items()).isEmpty();
+        org.junit.jupiter.api.Assertions.assertThrows(com.navio.usermanagementservice.exception.UserManagementExceptions.SavedPlaceNotFoundException.class,()->library.open(other,first.id()));
+        library.open(user,first.id());assertThat(library.require(user,first.id(),false).openedAt()).isNotNull();
+        library.remove(user,first.id());assertThat(library.list(user,current).total()).isZero();
+        library.restore(user,first.id(),50);assertThat(library.list(user,current).total()).isEqualTo(1);
+        for(int n=1;n<50;n++){var next=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"GUIDE","guide:traveler:"+java.util.UUID.randomUUID(),"Guide "+n,null,null,null,null,null,null,"TRAVELER",null,null,null,null,null,java.util.List.of());library.save(user,next,null,50);}
+        var extra=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),"GUIDE","guide:traveler:"+java.util.UUID.randomUUID(),"Extra",null,null,null,null,null,null,"TRAVELER",null,null,null,null,null,java.util.List.of());
+        org.junit.jupiter.api.Assertions.assertThrows(com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException.class,()->library.save(user,extra,null,50));
+        library.remove(user,first.id());library.save(user,extra,null,50);
+        org.junit.jupiter.api.Assertions.assertThrows(com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException.class,()->library.restore(user,first.id(),50));
+        jdbc.update("UPDATE iam.saved_guide_items SET deleted_at=now()-interval '8 days' WHERE id=?",first.id());library.expire(user);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM iam.saved_guide_items WHERE id=?",Long.class,first.id())).isZero();
+        // Old-backend SQL still sees only its original accepted content types after guide data exists.
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM iam.saved_library_items WHERE content_type NOT IN ('PLAN','PLACE')",Long.class)).isZero();
+    }
 }

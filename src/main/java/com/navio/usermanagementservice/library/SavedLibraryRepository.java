@@ -15,6 +15,9 @@ import java.util.*;
 public class SavedLibraryRepository {
     private final NamedParameterJdbcTemplate jdbc;
     private static final String TABLE="iam.saved_library_items";
+    private static final String GUIDE_TABLE="iam.saved_guide_items";
+    private static final String ALL_TABLES="(SELECT * FROM iam.saved_library_items UNION ALL SELECT * FROM iam.saved_guide_items) library";
+    private String table(UUID user,UUID id){return jdbc.queryForObject("SELECT count(*) FROM "+GUIDE_TABLE+" WHERE user_id=:user AND id=:id",owned(user,id),Long.class)>0?GUIDE_TABLE:TABLE;}
     private Map<String,Object> owner(UUID user) {var p=new HashMap<String,Object>();p.put("user",user);return p;}
     private Map<String,Object> owned(UUID user,UUID id) {var p=owner(user);p.put("id",id);return p;}
     private static Instant instant(ResultSet r,String name)throws SQLException {var t=r.getTimestamp(name);return t==null?null:t.toInstant();}
@@ -35,17 +38,18 @@ public class SavedLibraryRepository {
             i.city(),i.category(),i.authorName(),i.dayCount(),i.savedAt(),i.openedAt(),i.deletedAt(),List.copyOf(grouped.getOrDefault(i.id(),List.of())))).toList();
     }
     public Item require(UUID user,UUID id,boolean trash) {
-        var rows=jdbc.query("SELECT * FROM "+TABLE+" WHERE user_id=:user AND id=:id AND "+(trash?
+        var rows=jdbc.query("SELECT * FROM "+ALL_TABLES+" WHERE user_id=:user AND id=:id AND "+(trash?
             "deleted_at > now()-interval '7 days'":"deleted_at IS NULL"),owned(user,id),this::map);
         if(rows.isEmpty())throw new SavedPlaceNotFoundException(id);
         return sources(rows).getFirst();
     }
     public Item save(UUID user,Item item,Source source,Integer limit) {
         expire(user);
+        String target=item.type().equals("GUIDE")?GUIDE_TABLE:TABLE;
         var p=owner(user);p.put("identity",item.identity());p.put("type",item.type());
-        var existing=jdbc.query("SELECT * FROM "+TABLE+" WHERE user_id=:user AND content_type=:type AND identity=:identity",p,this::map);
+        var existing=jdbc.query("SELECT * FROM "+target+" WHERE user_id=:user AND content_type=:type AND identity=:identity",p,this::map);
         boolean active=!existing.isEmpty()&&existing.getFirst().deletedAt()==null;
-        if(!active&&limit!=null)quota(user,limit);
+        if(!active&&limit!=null)quota(user,limit,item.type());
         p.put("id",existing.isEmpty()?item.id():existing.getFirst().id());p.put("name",item.name());p.put("address",item.address());
         p.put("provider",item.providerPlaceId());p.put("lat",item.lat());p.put("lng",item.lng());p.put("country",item.country());p.put("city",item.city());
         p.put("category",item.category());p.put("author",item.authorName());p.put("days",item.dayCount());
@@ -60,21 +64,22 @@ public class SavedLibraryRepository {
               search_text=CASE WHEN saved_library_items.country IS NULL OR saved_library_items.city IS NULL OR saved_library_items.category IS NULL
                 THEN excluded.search_text ELSE saved_library_items.search_text END,
               saved_at=CASE WHEN saved_library_items.deleted_at IS NULL THEN saved_library_items.saved_at ELSE now() END
-            """,p);
+            """.replace("iam.saved_library_items",target).replace("saved_library_items.",target.substring(4)+"."),p);
         if(source!=null) {
             p.put("token",source.token());p.put("title",source.title());
             jdbc.update("INSERT INTO iam.saved_library_sources(item_id,token,title) VALUES(:id,:token,:title) ON CONFLICT(item_id,token) DO UPDATE SET title=excluded.title",p);
         }
         return require(user,(UUID)p.get("id"),false);
     }
-    private void quota(UUID user,int limit) {
-        var n=jdbc.queryForObject("SELECT count(*) FROM "+TABLE+" WHERE user_id=:user AND content_type='PLAN' AND deleted_at IS NULL",owner(user),Long.class);
-        if(n!=null&&n>=limit)throw new BusinessRuleException("Your Saved plans is full (50). Remove a plan before saving or restoring another.");
+    private void quota(UUID user,int limit,String type) {
+        var n=jdbc.queryForObject("SELECT count(*) FROM "+(type.equals("GUIDE")?GUIDE_TABLE:TABLE)+" WHERE user_id=:user AND content_type='"+type+"' AND deleted_at IS NULL",owner(user),Long.class);
+        if(n!=null&&n>=limit)throw new BusinessRuleException("Your Saved "+(type.equals("GUIDE")?"guides":"plans")+" is full (50). Remove an item before saving or restoring another.");
     }
     public Results list(UUID user,Query q) {
+        String source=q.includeGuides()?ALL_TABLES:TABLE;
         var p=owner(user);var where=new StringBuilder("user_id=:user AND ");
         where.append("TRASH".equals(q.tab())?"deleted_at > now()-interval '7 days'":"deleted_at IS NULL");
-        if(Set.of("PLAN","PLACE").contains(Objects.toString(q.tab(),""))){where.append(" AND content_type=:type");p.put("type",q.tab());}
+        if(Set.of("PLAN","PLACE","GUIDE").contains(Objects.toString(q.tab(),""))){where.append(" AND content_type=:type");p.put("type",q.tab());}
         if("OPENED".equals(q.tab()))where.append(" AND opened_at IS NOT NULL");
         if(q.search()!=null&&!q.search().isBlank()) {
             p.put("term",q.search());var parts=q.search().split(" ");var tokens=new ArrayList<String>();
@@ -93,28 +98,28 @@ public class SavedLibraryRepository {
             }
         }
         if("SHARED_PLAN".equals(q.source()))where.append(" AND (content_type='PLAN' OR EXISTS(SELECT 1 FROM iam.saved_library_sources s WHERE s.item_id=id))");
-        if("DIRECT".equals(q.source()))where.append(" AND content_type='PLACE' AND NOT EXISTS(SELECT 1 FROM iam.saved_library_sources s WHERE s.item_id=id)");
+        if("DIRECT".equals(q.source()))where.append(" AND content_type IN ('PLACE','GUIDE') AND NOT EXISTS(SELECT 1 FROM iam.saved_library_sources s WHERE s.item_id=id)");
         if(q.savedAfter()!=null){p.put("after",Timestamp.from(q.savedAfter()));where.append(" AND saved_at>=:after");}
         if(q.openedAfter()!=null){p.put("opened",Timestamp.from(q.openedAfter()));where.append(" AND opened_at>=:opened");}
         var order=switch(Objects.toString(q.sort(),"")){case "NAME"->"name ASC";case "OLDEST"->"saved_at ASC";case "OPENED"->"opened_at DESC NULLS LAST";default->"saved_at DESC";};
         p.put("size",q.size());p.put("offset",(long)q.page()*q.size());
-        var total=jdbc.queryForObject("SELECT count(*) FROM "+TABLE+" WHERE "+where,p,Long.class);
-        var items=sources(jdbc.query("SELECT * FROM "+TABLE+" WHERE "+where+" ORDER BY "+order+",id LIMIT :size OFFSET :offset",p,this::map));
-        var counts=jdbc.queryForMap("SELECT count(*) FILTER(WHERE content_type='PLAN') plans,count(*) FILTER(WHERE content_type='PLACE') places FROM "+TABLE+" WHERE user_id=:user AND deleted_at IS NULL",owner(user));
-        return new Results(items,total==null?0:total,q.page(),q.size(),((Number)counts.get("plans")).longValue(),((Number)counts.get("places")).longValue());
+        var total=jdbc.queryForObject("SELECT count(*) FROM "+source+" WHERE "+where,p,Long.class);
+        var items=sources(jdbc.query("SELECT * FROM "+source+" WHERE "+where+" ORDER BY "+order+",id LIMIT :size OFFSET :offset",p,this::map));
+        var counts=jdbc.queryForMap("SELECT count(*) FILTER(WHERE content_type='PLAN') plans,count(*) FILTER(WHERE content_type='PLACE') places,count(*) FILTER(WHERE content_type='GUIDE') guides FROM "+source+" WHERE user_id=:user AND deleted_at IS NULL",owner(user));
+        return new Results(items,total==null?0:total,q.page(),q.size(),((Number)counts.get("plans")).longValue(),((Number)counts.get("places")).longValue(),((Number)counts.get("guides")).longValue());
     }
     public List<State> states(UUID user,List<String> identities) {
         if(identities.isEmpty())return List.of();
         var p=owner(user);p.put("keys",identities);
-        var rows=sources(jdbc.query("SELECT * FROM "+TABLE+" WHERE user_id=:user AND identity IN (:keys) AND deleted_at IS NULL",p,this::map));
+        var rows=sources(jdbc.query("SELECT * FROM "+ALL_TABLES+" WHERE user_id=:user AND identity IN (:keys) AND deleted_at IS NULL",p,this::map));
         return identities.stream().distinct().map(key->rows.stream().filter(i->i.identity().equals(key)).findFirst()
             .map(i->new State(key,i.id(),true,i.sources())).orElse(new State(key,null,false,List.of()))).toList();
     }
-    public void remove(UUID user,UUID id) {require(user,id,false);jdbc.update("UPDATE "+TABLE+" SET deleted_at=now() WHERE user_id=:user AND id=:id",owned(user,id));}
-    public Item restore(UUID user,UUID id,int limit) {var i=require(user,id,true);if(i.type().equals("PLAN"))quota(user,limit);
-        jdbc.update("UPDATE "+TABLE+" SET deleted_at=NULL WHERE user_id=:user AND id=:id",owned(user,id));return require(user,id,false);}
-    public void purge(UUID user,UUID id) {require(user,id,true);jdbc.update("DELETE FROM "+TABLE+" WHERE user_id=:user AND id=:id AND deleted_at IS NOT NULL",owned(user,id));}
-    public Item open(UUID user,UUID id) {jdbc.update("UPDATE "+TABLE+" SET opened_at=now() WHERE user_id=:user AND id=:id AND deleted_at IS NULL",owned(user,id));return require(user,id,false);}
-    public void expire(UUID user) {jdbc.update("DELETE FROM "+TABLE+" WHERE user_id=:user AND deleted_at<=now()-interval '7 days'",owner(user));}
-    public void expireAll() {jdbc.getJdbcTemplate().update("DELETE FROM "+TABLE+" WHERE deleted_at<=now()-interval '7 days'");}
+    public void remove(UUID user,UUID id) {require(user,id,false);jdbc.update("UPDATE "+table(user,id)+" SET deleted_at=now() WHERE user_id=:user AND id=:id",owned(user,id));}
+    public Item restore(UUID user,UUID id,int limit) {var i=require(user,id,true);if(i.type().equals("PLAN")||i.type().equals("GUIDE"))quota(user,limit,i.type());
+        jdbc.update("UPDATE "+table(user,id)+" SET deleted_at=NULL WHERE user_id=:user AND id=:id",owned(user,id));return require(user,id,false);}
+    public void purge(UUID user,UUID id) {require(user,id,true);jdbc.update("DELETE FROM "+table(user,id)+" WHERE user_id=:user AND id=:id AND deleted_at IS NOT NULL",owned(user,id));}
+    public Item open(UUID user,UUID id) {jdbc.update("UPDATE "+table(user,id)+" SET opened_at=now() WHERE user_id=:user AND id=:id AND deleted_at IS NULL",owned(user,id));return require(user,id,false);}
+    public void expire(UUID user) {jdbc.update("DELETE FROM "+GUIDE_TABLE+" WHERE user_id=:user AND deleted_at<=now()-interval '7 days'",owner(user));jdbc.update("DELETE FROM "+TABLE+" WHERE user_id=:user AND deleted_at<=now()-interval '7 days'",owner(user));}
+    public void expireAll() {jdbc.getJdbcTemplate().update("DELETE FROM "+GUIDE_TABLE+" WHERE deleted_at<=now()-interval '7 days'");jdbc.getJdbcTemplate().update("DELETE FROM "+TABLE+" WHERE deleted_at<=now()-interval '7 days'");}
 }

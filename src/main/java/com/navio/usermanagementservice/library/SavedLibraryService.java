@@ -14,6 +14,11 @@ public class SavedLibraryService {
     private final SavedLibraryRepository repo;
     private final UserRepository users;
     private final PublishedPlanClient plans;
+    @org.springframework.beans.factory.annotation.Autowired
+    private PublishedGuideBookmark guides;
+    @Transactional public Item saveGuide(UUID user,GuideRequest request){
+        var item=guides.resolve(request.source(),request.id());users.lockSavedPlaces(user);return repo.save(user,item,null,50);
+    }
     public static String normalize(String value) {
         return Normalizer.normalize(value==null?"":value,Normalizer.Form.NFD).replaceAll("\\p{M}","")
             .toLowerCase(Locale.ROOT).trim().replaceAll("\\s+"," ");
@@ -43,7 +48,7 @@ public class SavedLibraryService {
     }
     public Results list(UUID user,Query q) {
         return repo.list(user,new Query(q.tab(),normalize(q.search()),q.sort(),Math.max(0,q.page()),Math.clamp(q.size(),1,48),
-            q.country(),q.city(),q.source(),q.category(),q.savedAfter(),q.openedAfter()));
+            q.country(),q.city(),q.source(),q.category(),q.savedAfter(),q.openedAfter(),q.includeGuides()));
     }
     public List<State> states(UUID user,List<String> identities) {return repo.states(user,identities);}
     @Transactional public void remove(UUID user,UUID id) {users.lockSavedPlaces(user);repo.remove(user,id);}
@@ -52,6 +57,7 @@ public class SavedLibraryService {
     @Transactional public Item open(UUID user,UUID id) {
         var item=repo.require(user,id,false);
         if(item.type().equals("PLAN"))plans.require(item.identity().substring(5));
+        if(item.type().equals("GUIDE"))guides.validate(item);
         return repo.open(user,id);
     }
     public PlanReference source(UUID user,UUID id,String token) {

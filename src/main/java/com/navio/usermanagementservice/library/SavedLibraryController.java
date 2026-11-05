@@ -17,17 +17,18 @@ public class SavedLibraryController {
     private final SavedLibraryService service;
     private <T> ResponseEntity<T> ok(T body){return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);}
     @GetMapping public ResponseEntity<Results> list(@CurrentUser AuthenticatedUser u,
-        @RequestParam(defaultValue="ALL") @Pattern(regexp="ALL|PLAN|PLACE|TRASH|OPENED") String tab,
+        @RequestParam(defaultValue="ALL") @Pattern(regexp="ALL|PLAN|PLACE|GUIDE|TRASH|OPENED") String tab,
         @RequestParam(defaultValue="") @Size(max=200) String search,
         @RequestParam(defaultValue="NEWEST") @Pattern(regexp="NEWEST|OLDEST|NAME|OPENED") String sort,
         @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="24") int size,
         @RequestParam(required=false) @Size(max=120) String country,@RequestParam(required=false) @Size(max=120) String city,
         @RequestParam(required=false) @Pattern(regexp="DIRECT|SHARED_PLAN") String source,@RequestParam(required=false) @Size(max=120) String category,
-        @RequestParam(required=false) Instant savedAfter,@RequestParam(required=false) Instant openedAfter) {
-        return ok(service.list(u.id(),new Query(tab,search,sort,page,size,country,city,source,category,savedAfter,openedAfter)));
+        @RequestParam(required=false) Instant savedAfter,@RequestParam(required=false) Instant openedAfter,@RequestParam(defaultValue="false") boolean includeGuides) {
+        return ok(service.list(u.id(),new Query(tab,search,sort,page,size,country,city,source,category,savedAfter,openedAfter,includeGuides)));
     }
     @PostMapping("/states") public ResponseEntity<List<State>> states(@CurrentUser AuthenticatedUser u,@Valid @RequestBody StateRequest r){return ok(service.states(u.id(),r.identities()));}
     @PostMapping("/places") public ResponseEntity<Item> place(@CurrentUser AuthenticatedUser u,@Valid @RequestBody PlaceRequest r){return ok(service.savePlace(u.id(),r));}
+    @PostMapping("/guides") public ResponseEntity<Item> guide(@CurrentUser AuthenticatedUser u,@Valid @RequestBody GuideRequest r){return ok(service.saveGuide(u.id(),r));}
     @PostMapping("/plans") public ResponseEntity<Item> plan(@CurrentUser AuthenticatedUser u,@Valid @RequestBody PlanRequest r){return ok(service.savePlan(u.id(),r.token()));}
     @PostMapping("/{id}/open") public ResponseEntity<Item> open(@CurrentUser AuthenticatedUser u,@PathVariable UUID id){return ok(service.open(u.id(),id));}
     @PostMapping("/{id}/restore") public ResponseEntity<Item> restore(@CurrentUser AuthenticatedUser u,@PathVariable UUID id){return ok(service.restore(u.id(),id));}

@@ -51,6 +51,13 @@ class UserGuideControllerTests {
     static final String WRITE = "{\"expectedVersion\":0,\"guide\":" + GUIDE + "}";
     static final String VERSION = "{\"expectedVersion\":0}";
 
+    @Test void publicAuthorFilterIsValidatedAndDelegated() throws Exception {
+        when(service.published(isNull(),isNull(),isNull(),isNull(),eq(ID),any())).thenReturn(Page.empty());
+        mvc.perform(get("/v1/traveler-guides").param("author",ID.toString())).andExpect(status().isOk());
+        verify(service).published(isNull(),isNull(),isNull(),isNull(),eq(ID),any());
+        mvc.perform(get("/v1/traveler-guides").param("author","not-an-account")).andExpect(status().isBadRequest());
+    }
+
     @BeforeEach void setUp() {
         lenient().when(provisioning.resolve(any(), anySet())).thenReturn(new AuthenticatedUser(UUID.randomUUID(), "admin", "admin@example.com", "Admin", Set.of(NavioRole.USER)));
     }

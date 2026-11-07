@@ -95,6 +95,9 @@ class UserGuidePostgresTests {
         service.create(owner, new CreateRequest(fields("Private Bangkok notes", "Bangkok", "Thailand", "ChIJ-bkk")));
         var page = PageRequest.of(0, 1, Sort.by("id"));
         assertThat(service.published("Thailand", null, null, null, page).getTotalElements()).isEqualTo(1);
+        assertThat(service.published(null,null,null,null,UUID.fromString(owner.authSubject()),page).getContent()).extracting(s -> s.id()).containsExactly(first.id());
+        assertThat(service.published(null,null,null,null,UUID.fromString(other.authSubject()),page).getContent()).extracting(s -> s.id()).containsExactly(second.id());
+        assertThat(service.published(null,null,null,null,UUID.randomUUID(),page).getTotalElements()).isZero();
         assertThat(service.published("Bangkok", null, null, null, page).getContent()).extracting(s -> s.id()).containsExactly(first.id());
         assertThat(service.published(null, List.of("Bangkok", "Tokyo"), null, null, page).getTotalElements()).isEqualTo(2);
         assertThat(service.published(null, null, null, List.of("GOOGLE:ChIJ-tokyo"), page).getContent()).extracting(s -> s.id()).containsExactly(second.id());

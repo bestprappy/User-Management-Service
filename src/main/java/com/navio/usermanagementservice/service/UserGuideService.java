@@ -40,7 +40,17 @@ public class UserGuideService {
     public AdminResponse detail(AuthenticatedUser caller, UUID id) { return response(requireOwned(caller, id), caller.displayName()); }
 
     public Page<PublishedSummary> published(String term, List<String> cities, String country, List<String> destinations, Pageable page) {
-        Page<UserGuide> result = repository.findAll(filter(term, Status.PUBLISHED, cities, country, destinations), page);
+        return published(term,cities,country,destinations,null,page);
+    }
+    public Page<PublishedSummary> published(String term,List<String> cities,String country,List<String> destinations,UUID accountId,Pageable page) {
+        Specification<UserGuide> specification=filter(term,Status.PUBLISHED,cities,country,destinations);
+        if(accountId!=null){
+            var account=users.findByAuthSubject(accountId.toString()).filter(user->user.getDeletedAt()==null);
+            if(account.isEmpty())return Page.empty(page);
+            UUID ownerId=account.get().getId();
+            specification=specification.and((root,query,cb)->cb.equal(root.get("ownerId"),ownerId));
+        }
+        Page<UserGuide> result = repository.findAll(specification, page);
         Map<UUID, Author> authors = authors(result.stream().map(UserGuide::getOwnerId).toList());
         return result.map(guide -> {
             Author author = authors.getOrDefault(guide.getOwnerId(), author(null));

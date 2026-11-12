@@ -12,6 +12,7 @@ import java.util.UUID;
 
 public interface GuideRepository extends JpaRepository<Guide, UUID>, JpaSpecificationExecutor<Guide> {
     Page<Guide> findByStatus(Status status, Pageable pageable);
+    java.util.List<Guide> findByStatus(Status status);
     Optional<Guide> findByIdAndStatus(UUID id, Status status);
     boolean existsByDestinationProviderAndDestinationPlaceId(String provider, String placeId);
 }

@@ -118,7 +118,10 @@ public class GuideDiscoveryService {
             if(!destination.isBlank()&&!tail.isBlank())completions.add(destination+" "+tail);
             if(completions.size()>=3)break;
         }
-        Stream.concat(matching.stream(),relevant.stream()).map(r->r.item.entry.name()).filter(Objects::nonNull).forEach(completions::add);
+        // A publication can be relevant through its body without its bare title being
+        // a useful query completion (for example Shanghai when typing foo).
+        Stream.concat(matching.stream(),relevant.stream()).filter(r->suggestedTitle(r.item.entry.name(),tokens))
+                .map(r->r.item.entry.name()).filter(Objects::nonNull).forEach(completions::add);
         List<String> suggestions=completions.stream().limit(6).toList();
         List<String> notices=new ArrayList<>();
         if(!selectedTime.equals("any")&&eligible.stream().anyMatch(i->!timeKnown(i,selectedTime)))notices.add("Some guides have no authored seasonal information; their time suitability is unknown.");
@@ -223,6 +226,15 @@ public class GuideDiscoveryService {
         Set<String> titleWords=words(item.entry.name());
         int title=(int)tokens.stream().filter(t->titleWords.stream().anyMatch(w->w.equals(t)||w.startsWith(t)&&t.length()>=2)).count();
         return new Ranked(item,exact,fuzzy,title);
+    }
+    private static boolean suggestedTitle(String title,List<String> tokens) {
+        Set<String> titleWords=words(title);
+        return tokens.stream().anyMatch(token->titleWords.stream().anyMatch(word->
+                word.equals(token)||token.length()>=2&&word.startsWith(token)
+                ||token.length()>=4&&!Set.of("dessert","desert").contains(token)
+                    &&!Set.of("dessert","desert").contains(word)&&distanceOne(token,word))
+                ||THEMES.values().stream().map(GuideDiscoveryService::words)
+                    .anyMatch(vocabulary->vocabulary.contains(token)&&titleWords.stream().anyMatch(vocabulary::contains)));
     }
     private static boolean distanceOne(String a,String b) {
         if(Math.abs(a.length()-b.length())>1)return false;

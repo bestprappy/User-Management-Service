@@ -32,6 +32,16 @@ class GuideDiscoveryServiceTests {
     Response search(String term, String country, String time, String collections, int page, int size) {
         return service.discover(term,country,time,collections,"","relevance",page,size);
     }
+    @Test void prefixSuggestionsDoNotPromoteBodyOnlyCityTitles() {
+        when(curated.findByStatus(Guide.Status.PUBLISHED)).thenReturn(List.of(
+                guide("Shanghai", "Shanghai", "China", "CN", "Food restaurants and cafes"),
+                guide("Tokyo", "Tokyo", "Japan", "JP", "Food restaurants and cafes"),
+                guide("Bangkok food guide", "Bangkok", "Thailand", "TH", "Food restaurants")));
+        Response result=search("foo", "", "any", "",0,24);
+        assertThat(result.relevant()).extracting(Entry::name).contains("Shanghai","Tokyo","Bangkok food guide");
+        assertThat(result.suggestions()).contains("Bangkok food guide").doesNotContain("Shanghai","Tokyo");
+        assertThat(search("Sha", "", "any", "",0,24).suggestions()).contains("Shanghai");
+    }
     @Test void publishedUnifiedCatalogueKeepsSourceQualifiedCollisionsAndStableIndependentPages() {
         Guide first=guide("First", "Bangkok", "Thailand", "TH", "");
         UserGuide second=new UserGuide(); second.setId(first.getId()); second.setName("Second"); second.setCountry("Thailand"); second.setCountryCode("TH"); second.setDestinationName("Bangkok"); second.setStatus(Guide.Status.PUBLISHED); second.setContent(first.getContent());

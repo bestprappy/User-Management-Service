@@ -112,6 +112,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/v1/guides", "/v1/guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/traveler-guides/discovery").permitAll()
                         .requestMatchers(HttpMethod.POST, "/v1/traveler-guides/discovery/{source}/{id}/view").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/traveler-guides/discovery/{source}/{id}/feedback", "/v1/traveler-guides/discovery/{source}/{id}/feedback/comments").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/users/me/vehicles/catalog").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/palette-colors").permitAll()
 

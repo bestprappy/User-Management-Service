@@ -32,6 +32,13 @@ class GuideDiscoveryServiceTests {
     Response search(String term, String country, String time, String collections, int page, int size) {
         return service.discover(term,country,time,collections,"","relevance",page,size);
     }
+    @Test void ratingSortsUseRealPublishedAggregatesAndKeepUnratedLast() {
+        Guide low=guide("Lower","Tokyo","Japan","JP","food"), high=guide("Higher","Tokyo","Japan","JP","food"), unrated=guide("Unrated","Tokyo","Japan","JP","food");
+        when(curated.findByStatus(Guide.Status.PUBLISHED)).thenReturn(List.of(unrated,low,high));
+        when(engagement.counts()).thenReturn(Map.of("CURATED:"+low.getId(),new GuideEngagementRepository.Counts(90,2,1,3.0,8),"CURATED:"+high.getId(),new GuideEngagementRepository.Counts(1,1,1,5.0,2)));
+        assertThat(service.discover("","JP","any","","","rating",0,24).matching()).extracting(Entry::name).containsExactly("Higher","Lower","Unrated");
+        assertThat(service.discover("","JP","any","","","reviews",0,24).matching()).extracting(Entry::name).containsExactly("Lower","Higher","Unrated");
+    }
     @Test void prefixSuggestionsDoNotPromoteBodyOnlyCityTitles() {
         when(curated.findByStatus(Guide.Status.PUBLISHED)).thenReturn(List.of(
                 guide("Shanghai", "Shanghai", "China", "CN", "Food restaurants and cafes"),
@@ -96,8 +103,8 @@ class GuideDiscoveryServiceTests {
     }
     @Test void viewPublicationValidationIsSourceSpecific() {
         UUID id=UUID.randomUUID(); when(curated.findByIdAndStatus(id,Guide.Status.PUBLISHED)).thenReturn(Optional.empty());
-        assertThatThrownBy(()->service.recordView("CURATED",id,"viewer","network")).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.GuideNotFoundException.class);
-        verify(engagement,never()).record(anyString(),any(),anyString(),anyString());
+        assertThatThrownBy(()->service.recordView("CURATED",id,UUID.randomUUID(),"viewer","network")).isInstanceOf(com.navio.usermanagementservice.exception.UserManagementExceptions.GuideNotFoundException.class);
+        verify(engagement,never()).record(anyString(),any(),any(),any(),anyString());
     }
     @Test void trendingColdStartIsScopedToEligibleCountryAndFallsBackToPublicationRecency() {
         Guide foreign=guide("Foreign hot", "Paris", "France", "FR", "");

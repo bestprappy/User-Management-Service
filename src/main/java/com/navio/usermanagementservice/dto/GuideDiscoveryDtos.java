@@ -12,7 +12,7 @@ public final class GuideDiscoveryDtos {
             String destinationName, String destinationProvider, String destinationPlaceId,
             String description, String coverPlaceId, int placeCount, List<Category> categories,
             Author author, Instant publishedAt, Instant updatedAt, String source, long viewCount,
-            String discoveryLabel, List<String> collections) {}
+            String discoveryLabel, List<String> collections, Double ratingAverage, long ratingCount) {}
     public record Response(List<Entry> content, List<Entry> matching, List<Entry> relevant,
             long matchingTotal, long relevantTotal, long totalElements, int number, boolean last,
             List<String> suggestions, String notice) {}

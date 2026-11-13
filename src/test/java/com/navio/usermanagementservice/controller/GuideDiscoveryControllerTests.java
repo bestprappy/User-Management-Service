@@ -41,20 +41,26 @@ class GuideDiscoveryControllerTests {
         mvc.perform(get(BASE).param("country","Thailand")).andExpect(status().isBadRequest());
         mvc.perform(get(BASE).param("term","x".repeat(201))).andExpect(status().isBadRequest());
     }
-    @Test void anonymousViewRequiresUuidSessionAndDoesNotTrustForwardedIdentity() throws Exception {
-        mvc.perform(post(BASE+"/CURATED/"+ID+"/view")).andExpect(status().isUnprocessableEntity());
-        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\"bad\"}")).andExpect(status().isBadRequest());
-        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+ID+"\"}").header("X-User-Id",ID).header("X-Forwarded-For","fake")).andExpect(status().isNoContent());
-        verify(service).recordView(eq("CURATED"),eq(ID),matches("[0-9a-f]{64}"),matches("[0-9a-f]{64}"));
+
+    private String body() { return "{\"readId\":\""+ID+"\"}"; }
+    @Test void rollingReleaseAcceptsLegacyRequestButNeverTreatsVisitorAsAccount() throws Exception {
+        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+ID+"\"}")).andExpect(status().isNoContent());
+        verify(service).recordView(eq("CURATED"),eq(ID),eq(ID),isNull(),anyString());
+        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isBadRequest());
     }
-    @Test void authenticatedSubjectWinsOverUntrustedSessionAndPublishedFailuresReturn404() throws Exception {
+    @Test void guestReadCountsTotalWithoutTrustingForwardedAccount() throws Exception {
+        mvc.perform(post(BASE+"/CURATED/"+ID+"/view")).andExpect(status().isBadRequest());
+        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").contentType(MediaType.APPLICATION_JSON).content(body()).header("X-User-Id",ID)).andExpect(status().isNoContent());
+        verify(service).recordView(eq("CURATED"),eq(ID),eq(ID),isNull(),matches("[0-9a-f]{64}"));
+    }
+    @Test void accountIdentityComesOnlyFromValidatedSubjectAndPublicationMustExist() throws Exception {
         var captor=org.mockito.ArgumentCaptor.forClass(String.class);
-        mvc.perform(post(BASE+"/TRAVELER/"+ID+"/view").with(jwt().jwt(j->j.subject("owner")))).andExpect(status().isNoContent());
-        mvc.perform(post(BASE+"/TRAVELER/"+ID+"/view").with(jwt().jwt(j->j.subject("owner"))).contentType(MediaType.APPLICATION_JSON).content("{\"visitorId\":\""+ID+"\"}")).andExpect(status().isNoContent());
-        verify(service,times(2)).recordView(eq("TRAVELER"),eq(ID),captor.capture(),anyString());
+        mvc.perform(post(BASE+"/TRAVELER/"+ID+"/view").with(jwt().jwt(j->j.subject("owner"))).contentType(MediaType.APPLICATION_JSON).content(body())).andExpect(status().isNoContent());
+        mvc.perform(post(BASE+"/TRAVELER/"+ID+"/view").with(jwt().jwt(j->j.subject("owner"))).contentType(MediaType.APPLICATION_JSON).content(body()).header("X-User-Id",UUID.randomUUID())).andExpect(status().isNoContent());
+        verify(service,times(2)).recordView(eq("TRAVELER"),eq(ID),eq(ID),captor.capture(),anyString());
         assertThat(captor.getAllValues()).containsOnly(captor.getValue());
-        doThrow(new GuideNotFoundException()).when(service).recordView(eq("CURATED"),eq(ID),anyString(),anyString());
-        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").with(jwt())).andExpect(status().isNotFound());
-        mvc.perform(post(BASE+"/PRIVATE/"+ID+"/view").with(jwt())).andExpect(status().isBadRequest());
+        doThrow(new GuideNotFoundException()).when(service).recordView(eq("CURATED"),eq(ID),any(),any(),anyString());
+        mvc.perform(post(BASE+"/CURATED/"+ID+"/view").with(jwt()).contentType(MediaType.APPLICATION_JSON).content(body())).andExpect(status().isNotFound());
+        mvc.perform(post(BASE+"/PRIVATE/"+ID+"/view").with(jwt()).contentType(MediaType.APPLICATION_JSON).content(body())).andExpect(status().isBadRequest());
     }
 }

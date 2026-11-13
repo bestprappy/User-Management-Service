@@ -33,27 +33,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresSchemaTests {
     @Autowired com.navio.usermanagementservice.repository.GuideEngagementRepository engagement;
     @Autowired com.navio.usermanagementservice.library.SavedLibraryRepository library;
-    @Test void guideViewsDeduplicateBoundBudgetsKeepSourcesDistinctAndUseThirtyDayWindow() {
-        var id=java.util.UUID.randomUUID(); String viewer="a".repeat(64), network="b".repeat(64);
-        engagement.record("CURATED",id,viewer,network); engagement.record("CURATED",id,viewer,network);
-        engagement.record("TRAVELER",id,viewer,network);
+    @Test void readsCountEveryOpeningButAccountIdentityIsLifetimeUnique() {
+        var id=java.util.UUID.randomUUID(); var read=java.util.UUID.randomUUID(); String account="a".repeat(64), network="b".repeat(64);
+        engagement.record("CURATED",id,read,account,network);
+        engagement.record("CURATED",id,read,account,network);
         assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(1);
-        assertThat(engagement.counts().get("TRAVELER:"+id).recent()).isEqualTo(1);
+        engagement.record("CURATED",id,java.util.UUID.randomUUID(),account,network);
+        engagement.record("CURATED",id,java.util.UUID.randomUUID(),null,network);
+        assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(3);
+        assertThat(engagement.counts().get("CURATED:"+id).unique()).isEqualTo(1);
+        engagement.record("TRAVELER",id,read,account,network);
+        assertThat(engagement.counts().get("TRAVELER:"+id).unique()).isEqualTo(1);
+        jdbc.update("UPDATE iam.guide_unique_account_views SET first_view_at=now()-interval '40 days' WHERE guide_id=?",id);
+        engagement.record("CURATED",id,java.util.UUID.randomUUID(),account,network);
+        assertThat(engagement.counts().get("CURATED:"+id).unique()).isEqualTo(1);
+        engagement.record("CURATED",id,java.util.UUID.randomUUID(),"c".repeat(64),network);
+        assertThat(engagement.counts().get("CURATED:"+id).unique()).isEqualTo(2);
         jdbc.update("INSERT INTO iam.guide_daily_views(source,guide_id,view_day,views) VALUES ('CURATED',?,CURRENT_DATE-30,9),('CURATED',?,CURRENT_DATE-29,3)",id,id);
-        assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(13);
-        assertThat(engagement.counts().get("CURATED:"+id).recent()).isEqualTo(4);
-        jdbc.update("UPDATE iam.guide_view_budgets SET views=100 WHERE viewer_hash=?",viewer);
-        engagement.record("CURATED",java.util.UUID.randomUUID(),viewer,network);
-        assertThat(jdbc.queryForObject("SELECT views FROM iam.guide_view_budgets WHERE viewer_hash=?",Integer.class,viewer)).isEqualTo(100);
-        jdbc.update("UPDATE iam.guide_view_budgets SET views=10000 WHERE viewer_hash=?",network);
-        engagement.record("CURATED",java.util.UUID.randomUUID(),"c".repeat(64),network);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM iam.guide_view_budgets WHERE viewer_hash=?",Integer.class,"c".repeat(64))).isZero();
-        jdbc.update("INSERT INTO iam.guide_view_dedup(source,guide_id,viewer_hash,view_day) VALUES ('CURATED',?, ?,CURRENT_DATE-2)",id,viewer);
-        jdbc.update("UPDATE iam.guide_view_budgets SET views=0 WHERE viewer_hash IN (?,?)",viewer,network);
-        engagement.record("CURATED",java.util.UUID.randomUUID(),viewer,network);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM iam.guide_view_dedup WHERE view_day<CURRENT_DATE-1",Integer.class)).isZero();
+        assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(17);
+        assertThat(engagement.counts().get("CURATED:"+id).recent()).isEqualTo(8);
+        jdbc.update("UPDATE iam.guide_view_budgets SET views=10000 WHERE viewer_hash=? AND view_day=CURRENT_DATE",network);
+        engagement.record("CURATED",id,java.util.UUID.randomUUID(),account,network);
+        assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(17);
     }
-
     @Test void libraryDeduplicatesSourcesSearchesWholeCollectionAndEnforcesTrashOwnership() {
         var user=java.util.UUID.randomUUID();
         jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",user,user.toString(),user+"@example.com","Library test");

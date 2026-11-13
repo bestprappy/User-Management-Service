@@ -2,9 +2,9 @@ package com.navio.usermanagementservice.controller;
 
 import com.navio.usermanagementservice.dto.GuideDiscoveryDtos.Response;
 import com.navio.usermanagementservice.service.GuideDiscoveryService;
-import com.navio.usermanagementservice.exception.UserManagementExceptions.BusinessRuleException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.*;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -18,7 +18,11 @@ import java.util.*;
 public class GuideDiscoveryController {
     private final GuideDiscoveryService service;
     
-    public record ViewRequest(UUID visitorId) {}
+    public record ViewRequest(UUID readId, UUID visitorId) {
+        @AssertTrue(message="A read identifier is required")
+        public boolean isIdentified() { return readId != null || visitorId != null; }
+        public UUID requestId() { return readId != null ? readId : visitorId; }
+    }
     @GetMapping
     public Response discover(@RequestParam(defaultValue="") @Size(max=200) String term,
             @RequestParam(defaultValue="") @Pattern(regexp="[A-Za-z]{2}|^") String country,
@@ -32,14 +36,12 @@ public class GuideDiscoveryController {
     }
     @PostMapping("/{source}/{id}/view")
     public ResponseEntity<Void> view(@PathVariable @Pattern(regexp="CURATED|TRAVELER") String source,
-            @PathVariable UUID id, @RequestBody(required=false) ViewRequest body,
+            @PathVariable UUID id, @Valid @RequestBody ViewRequest body,
             HttpServletRequest request, Authentication authentication) {
         boolean authenticated=authentication!=null&&authentication.isAuthenticated()&&!"anonymousUser".equals(authentication.getName());
-        if(!authenticated&&(body==null||body.visitorId()==null))throw new BusinessRuleException("A visitor session is required");
-        String identity=authenticated?"account:"+authentication.getName():"visitor:"+body.visitorId();
-        // The untrusted session is only dedup evidence, never authentication. A separate
-        // network budget bounds anonymous ID rotation; forwarded headers are not trusted.
-        service.recordView(source,id,hash(identity),hash("network:"+request.getRemoteAddr()));
+        String account=authenticated?hash("account:"+authentication.getName()):null;
+        // The read UUID is only retry evidence, never identity or authentication.
+        service.recordView(source,id,body.requestId(),account,hash("network:"+request.getRemoteAddr()));
         return ResponseEntity.noContent().build();
     }
     private static String hash(String identity) {

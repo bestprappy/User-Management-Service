@@ -234,6 +234,11 @@ public class GlobalExceptionHandler {
                 "The identity provider is temporarily unavailable", "Try again in a moment");
     }
 
+    @ExceptionHandler(com.navio.usermanagementservice.service.GuideFeedbackService.FeedbackException.class)
+    public ResponseEntity<ErrorResponse> handleGuideFeedback(com.navio.usermanagementservice.service.GuideFeedbackService.FeedbackException ex) {
+        return build(HttpStatus.valueOf(ex.status()),ex.getMessage(),null);
+    }
+
     // --- Fallback ------------------------------------------------------------
 
     /** A known path called with a method it does not support is the caller's mistake, not a server fault. */

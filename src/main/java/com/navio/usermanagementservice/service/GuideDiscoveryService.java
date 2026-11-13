@@ -23,7 +23,7 @@ public class GuideDiscoveryService {
     private final GuideEngagementRepository engagement;
     private static final Set<String> COLLECTIONS=Set.of("trending","popular","seasonal","scenic","food","sweets","relax","night","nature");
     private static final Set<String> INTERESTS=Set.of("architecture","museums","street-food","hiking","beaches","shopping");
-    private static final Set<String> SORTS=Set.of("relevance","trending","popular","views","recent","updated");
+    private static final Set<String> SORTS=Set.of("relevance","trending","popular","views","recent","updated","rating","reviews");
     private static final Map<String,String> THEMES=Map.ofEntries(
             Map.entry("food","food restaurant restaurants cuisine culinary dining eats eateries meal meals"),
             Map.entry("sweets","sweets sweet dessert desserts cake cakes bakery bakeries pastry pastries gelato"),
@@ -132,14 +132,14 @@ public class GuideDiscoveryService {
                 ((long)page+1)*size>=Math.max(matching.size(),relevant.size()),suggestions,notices.isEmpty()?null:String.join(" ",notices));
     }
     @Transactional
-    public void recordView(String source,UUID id,String viewer,String network) {
+    public void recordView(String source,UUID id,UUID readId,String account,String network) {
         boolean exists=switch(source){
             case "CURATED" -> curated.findByIdAndStatus(id,Guide.Status.PUBLISHED).isPresent();
             case "TRAVELER" -> travelers.findByIdAndStatus(id,Guide.Status.PUBLISHED).isPresent();
             default -> false;
         };
         if(!exists)throw new GuideNotFoundException();
-        engagement.record(source,id,viewer,network);
+        engagement.record(source,id,readId,account,network);
     }
     private Item item(GuideDocument guide,String source,Author author,Map<String,GuideEngagementRepository.Counts> counts) {
         var content=GuideDocumentSupport.content(guide,json);
@@ -181,7 +181,7 @@ public class GuideDiscoveryService {
         for(var event:EVENTS.entrySet())if(expanded.contains("event:"+event.getKey()))expanded.addAll(words(event.getValue()));
         for(String authoredTime:times)if(authoredTime.startsWith("season:"))expanded.add(authoredTime.substring(7));
         for(String theme:themes)if(THEMES.containsKey(theme))expanded.addAll(words(THEMES.get(theme)));
-        Entry entry=new Entry(guide.getId(),guide.getName(),guide.getCountry(),guide.getCountryCode(),guide.getDestinationName(),guide.getDestinationProvider(),guide.getDestinationPlaceId(),guide.getDescription(),guide.getCoverPlaceId(),GuideDocumentSupport.placeCount(guide,json),categories,author,guide.getPublishedAt(),guide.getUpdatedAt(),source,count.total(),label,List.copyOf(themes));
+        Entry entry=new Entry(guide.getId(),guide.getName(),guide.getCountry(),guide.getCountryCode(),guide.getDestinationName(),guide.getDestinationProvider(),guide.getDestinationPlaceId(),guide.getDescription(),guide.getCoverPlaceId(),GuideDocumentSupport.placeCount(guide,json),categories,author,guide.getPublishedAt(),guide.getUpdatedAt(),source,count.total(),label,List.copyOf(themes),count.ratingAverage(),count.ratingCount());
         return new Item(entry,expanded,geo,times,count.recent());
     }
     private static Set<String> events(String evidence){
@@ -255,6 +255,8 @@ public class GuideDiscoveryService {
                 case "relevance" -> Comparator.<Ranked>comparingInt(r->r.title).reversed().thenComparing(Comparator.<Ranked>comparingInt(r->r.exact).reversed()).thenComparing(Comparator.<Ranked>comparingInt(r->r.fuzzy).reversed());
                 case "trending" -> Comparator.<Ranked>comparingLong(r->r.item.recent).reversed();
                 case "popular","views" -> Comparator.<Ranked>comparingLong(r->r.item.entry.viewCount()).reversed();
+                case "rating" -> Comparator.<Ranked,Double>comparing(r->r.item.entry.ratingAverage(),Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Comparator.<Ranked>comparingLong(r->r.item.entry.ratingCount()).reversed());
+                case "reviews" -> Comparator.<Ranked>comparingLong(r->r.item.entry.ratingCount()).reversed();
                 case "updated" -> Comparator.comparing(r->r.item.entry.updatedAt(),Comparator.nullsLast(Comparator.reverseOrder()));
                 default -> Comparator.comparing(r->r.item.entry.publishedAt(),Comparator.nullsLast(Comparator.reverseOrder()));
             }; result=result.thenComparing(next);

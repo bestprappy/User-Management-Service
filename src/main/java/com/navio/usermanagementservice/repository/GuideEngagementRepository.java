@@ -29,8 +29,9 @@ public class GuideEngagementRepository {
         Integer networkBudget=jdbc.queryForObject("SELECT views FROM iam.guide_view_budgets WHERE viewer_hash=? AND view_day=CURRENT_DATE FOR UPDATE",Integer.class,network);
         if(networkBudget==null || networkBudget>=10000)return;
         int inserted=jdbc.update("INSERT INTO iam.guide_read_requests(source,guide_id,read_id) VALUES (?,?,?) ON CONFLICT DO NOTHING",source,id,readId);
-        if(inserted==0)return;
+        // A guest read may be retried after sign-in; attach that account without adding another opening.
         if(account!=null)jdbc.update("INSERT INTO iam.guide_unique_account_views(source,guide_id,account_hash) VALUES (?,?,?) ON CONFLICT DO NOTHING",source,id,account);
+        if(inserted==0)return;
         jdbc.update("UPDATE iam.guide_view_budgets SET views=views+1 WHERE viewer_hash=? AND view_day=CURRENT_DATE",network);
         jdbc.update("INSERT INTO iam.guide_daily_views(source,guide_id,view_day,views) VALUES (?,?,CURRENT_DATE,1) ON CONFLICT (source,guide_id,view_day) DO UPDATE SET views=iam.guide_daily_views.views+1",source,id);
         jdbc.update("DELETE FROM iam.guide_view_dedup WHERE view_day < CURRENT_DATE - 1");

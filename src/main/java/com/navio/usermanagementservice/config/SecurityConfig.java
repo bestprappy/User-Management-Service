@@ -114,6 +114,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/v1/traveler-guides/discovery/{source}/{id}/view").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/traveler-guides/discovery/{source}/{id}/feedback", "/v1/traveler-guides/discovery/{source}/{id}/feedback/comments").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/users/me/vehicles/catalog").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/saved-content/favorites").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/palette-colors").permitAll()
 
                         // Coarse gate on the admin surface. Individual handlers

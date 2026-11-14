@@ -28,11 +28,35 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.jpa.hibernate.ddl-auto=validate"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@org.springframework.context.annotation.Import({com.navio.usermanagementservice.library.SavedLibraryRepository.class,com.navio.usermanagementservice.repository.GuideEngagementRepository.class})
+@org.springframework.context.annotation.Import({com.navio.usermanagementservice.library.SavedLibraryRepository.class,com.navio.usermanagementservice.library.PublicFavoritesRepository.class,com.navio.usermanagementservice.repository.GuideEngagementRepository.class})
 @EnabledIfEnvironmentVariable(named = "NAVIO_TEST_DB_URL", matches = ".+")
 class PostgresSchemaTests {
+    @Autowired com.navio.usermanagementservice.library.PublicFavoritesRepository favorites;
+    @Test void favoritesCountDistinctActiveAccountsAndRespectUnsaveAndRestore() {
+        var ids=java.util.List.of("plan:favorite-test","guide:curated:"+java.util.UUID.randomUUID());
+        var user=java.util.UUID.randomUUID();var second=java.util.UUID.randomUUID();
+        for(var u:java.util.List.of(user,second))jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",u,u.toString(),u+"@example.com","Favorite test");
+        for(String identity:ids){String type=identity.startsWith("plan:")?"PLAN":"GUIDE";
+            var item=new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),type,identity,"Favorite",null,null,null,null,null,null,null,null,null,null,null,null,java.util.List.of());
+            var saved=library.save(user,item,null,50);library.save(user,item,null,50);library.save(second,new com.navio.usermanagementservice.library.LibraryContracts.Item(java.util.UUID.randomUUID(),type,identity,"Favorite",null,null,null,null,null,null,null,null,null,null,null,null,java.util.List.of()),null,50);
+            assertThat(favorites.counts(java.util.List.of(identity)).getFirst().count()).isEqualTo(2);
+            library.remove(user,saved.id());assertThat(favorites.counts(java.util.List.of(identity)).getFirst().count()).isEqualTo(1);
+            library.restore(user,saved.id(),50);assertThat(favorites.counts(java.util.List.of(identity)).getFirst().count()).isEqualTo(2);
+            library.remove(user,saved.id());library.purge(user,saved.id());assertThat(favorites.counts(java.util.List.of(identity)).getFirst().count()).isEqualTo(1);
+        }
+        assertThat(favorites.counts(java.util.List.of("plan:missing")).getFirst().count()).isZero();
+    }
     @Autowired com.navio.usermanagementservice.repository.GuideEngagementRepository engagement;
     @Autowired com.navio.usermanagementservice.library.SavedLibraryRepository library;
+    @Test void signingInAfterGuestReadAttachesAccountWithoutAddingAnotherTotalView() {
+        var id=java.util.UUID.randomUUID();var read=java.util.UUID.randomUUID();var network="d".repeat(64);var account="e".repeat(64);
+        engagement.record("CURATED",id,read,null,network);
+        engagement.record("CURATED",id,read,account,network);
+        engagement.record("CURATED",id,read,account,network);
+        assertThat(engagement.counts().get("CURATED:"+id).total()).isEqualTo(1);
+        assertThat(engagement.counts().get("CURATED:"+id).unique()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT views FROM iam.guide_view_budgets WHERE viewer_hash=? AND view_day=CURRENT_DATE",Integer.class,network)).isEqualTo(1);
+    }
     @Test void readsCountEveryOpeningButAccountIdentityIsLifetimeUnique() {
         var id=java.util.UUID.randomUUID(); var read=java.util.UUID.randomUUID(); String account="a".repeat(64), network="b".repeat(64);
         engagement.record("CURATED",id,read,account,network);

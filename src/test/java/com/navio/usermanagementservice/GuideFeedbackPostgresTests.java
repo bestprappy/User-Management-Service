@@ -33,6 +33,15 @@ class GuideFeedbackPostgresTests {
   assertThat(service.summary(key,alice).myRating()).isEqualTo(5);
   summary=service.rate(key,alice,null);assertThat(summary.ratingCount()).isEqualTo(1);assertThat(summary.ratingAverage()).isEqualTo(4);
  }
+ @Test void commentsCarryTheAuthorsSignInSubjectForProfileLinksUntilRemoved(){
+  owned();UUID subject=UUID.randomUUID();
+  jdbc.update("INSERT INTO iam.users(id,auth_subject,email,display_name) VALUES(?,?,?,?)",alice,subject.toString(),alice+"@example.com","Alice");
+  service.add(key,alice,new CommentRequest("Useful route","Alice",null));
+  var comment=service.comments(key,null,null,0).content().getFirst();
+  assertThat(comment.authorId()).isEqualTo(subject.toString());
+  service.delete(key,alice,comment.id());
+  assertThat(service.comments(key,null,null,0).content().getFirst().authorId()).isNull();
+ }
  @Test void commentsRetainRepliesEnforceOwnershipAndVersionsAndRestrictReports(){
   owned();service.add(key,alice,new CommentRequest("Useful route","Alice",null));
   var comment=service.comments(key,alice,null,0).content().getFirst();

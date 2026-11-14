@@ -16,7 +16,9 @@ public final class GuideFeedback {
     public record ReportRequest(@NotNull Reason reason) {}
     public record Summary(Double ratingAverage, long ratingCount, long commentCount, Integer myRating, boolean publisher, long viewCount, long uniqueViewCount, boolean canModerate) {}
     public record Comment(UUID id, UUID parentId, String authorName, String content, boolean deleted,
-            Instant createdAt, Instant updatedAt, int version, boolean canEdit, boolean canDelete, long replyCount) {}
+            Instant createdAt, Instant updatedAt, int version, boolean canEdit, boolean canDelete, long replyCount,
+            /** Sign-in subject of the author, used to link their public profile; null once the comment is removed. */
+            String authorId) {}
     public record Comments(List<Comment> content, boolean hasMore, long total, int page) {}
     public record Report(UUID commentId, String content, long reportCount) {}
 }

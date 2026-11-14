@@ -79,7 +79,8 @@ public class GuideFeedbackRepository {
         if(parent!=null)count=count.param("parent",parent);
         long total=count.query(Long.class).single();
         var query=db.sql("""
-            SELECT c.*,(SELECT count(*) FROM iam.guide_comment r WHERE r.parent_id=c.id AND r.publication_id=c.publication_id) reply_count
+            SELECT c.*,(SELECT count(*) FROM iam.guide_comment r WHERE r.parent_id=c.id AND r.publication_id=c.publication_id) reply_count,
+                (SELECT u.auth_subject FROM iam.users u WHERE u.id=c.user_id) author_subject
             FROM iam.guide_comment c WHERE c.publication_id=:p AND
             """+filter+" ORDER BY c.created_at "+(parent==null?"DESC":"ASC")+",c.id "+(parent==null?"DESC":"ASC")+" LIMIT 20 OFFSET :offset")
             .param("p",p).param("offset",(long)page*20);
@@ -91,7 +92,7 @@ public class GuideFeedbackRepository {
         boolean deleted=r.getBoolean("deleted"),self=Objects.equals(viewer,r.getObject("user_id",UUID.class));
         return new Comment(r.getObject("id",UUID.class),r.getObject("parent_id",UUID.class),deleted?null:r.getString("author_name"),
             deleted?null:r.getString("content"),deleted,r.getTimestamp("created_at").toInstant(),r.getTimestamp("updated_at").toInstant(),
-            r.getInt("version"),self&&!deleted,(self||owner)&&!deleted,r.getLong("reply_count"));
+            r.getInt("version"),self&&!deleted,(self||owner)&&!deleted,r.getLong("reply_count"),deleted?null:r.getString("author_subject"));
     }
     public void report(UUID id,UUID user,Reason reason) {
         db.sql("INSERT INTO iam.guide_comment_report(comment_id,reporter_id,reason) VALUES(:id,:u,:reason) ON CONFLICT DO NOTHING")

@@ -28,5 +28,6 @@ public final class VehicleModelDtos {
             @PastOrPresent LocalDate verifiedAt) {}
     public record WriteRequest(@PositiveOrZero Long expectedVersion, @NotNull @Valid Fields specification) {}
     public record VersionRequest(@NotNull @PositiveOrZero Long expectedVersion) {}
+    public record ImageResponse(java.util.UUID id, String imageUrl) {}
     public record AdminResponse(String id, Status status, long version, Fields specification, Instant createdAt, Instant updatedAt) {}
 }

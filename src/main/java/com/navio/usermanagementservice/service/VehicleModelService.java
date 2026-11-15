@@ -123,12 +123,12 @@ public class VehicleModelService {
     private static String blankToNull(String text) { return text == null || text.isBlank() ? null : text.trim(); }
     private static void validateUrl(String value, boolean image) {
         if (value == null || value.isBlank()) return;
-        if (image && value.matches("^/images/vehicles/[a-z0-9-]+\\.(png|webp)$")) return;
+        if (image && com.navio.usermanagementservice.media.VehicleImagePaths.isLocal(value.trim())) return;
         try {
             URI uri = URI.create(value.trim());
             if ("https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null && uri.getRawUserInfo() == null) return;
         } catch (IllegalArgumentException ignored) { }
-        throw new BusinessRuleException(image ? "Use an HTTPS image URL or a bundled vehicle image" : "Use an HTTPS source URL");
+        throw new BusinessRuleException(image ? "Use an HTTPS image URL, a bundled vehicle image or an uploaded photo" : "Use an HTTPS source URL");
     }
     private static void validatePublication(VehicleModel model) {
         if (model.getBatteryCapacityKwh() == null || model.getRangeKm() == null || model.getRangeStandard() == null

@@ -108,7 +108,7 @@ public class SecurityConfig {
 
                         // CORS preflight carries no credentials and must not 401.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/v1/vehicle-models", "/v1/vehicle-models/{id}").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/v1/vehicle-models", "/v1/vehicle-models/{id}", "/v1/vehicle-models/images/{imageId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/guides", "/v1/guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}", "/v1/traveler-guides", "/v1/traveler-guides/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/v1/traveler-guides/discovery").permitAll()
                         .requestMatchers(HttpMethod.POST, "/v1/traveler-guides/discovery/{source}/{id}/view").permitAll()

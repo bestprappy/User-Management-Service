@@ -279,7 +279,7 @@ public class UserVehicleService {
         if (settings.startingBatteryPct() != null) vehicle.setStartingBatteryPct(settings.startingBatteryPct());
         if (settings.imageUrl() != null) {
             String imageUrl = trimToNull(settings.imageUrl());
-            if (imageUrl != null && !imageUrl.matches("^/images/vehicles/[a-z0-9-]+\\.(png|webp)$")) {
+            if (imageUrl != null && !com.navio.usermanagementservice.media.VehicleImagePaths.isLocal(imageUrl)) {
                 try {
                     URI uri = URI.create(imageUrl);
                     if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) {
